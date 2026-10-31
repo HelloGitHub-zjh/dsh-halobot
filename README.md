@@ -29,9 +29,9 @@ QQ ⇄ SnowLuma（OneBot v11）⇄ Halobot 插件 ⇄ DSH 会话（自带 preset
 ## 她能做什么
 
 - **聊天**：私聊、群聊，被 @ 或叫名字才回；群聊有插话概率、冷却、时段、每小时上限，多个群可以分别设策略。
-- **表达**：edge-tts / CosyVoice / GPT-SoVITS / 任意 HTTP 接口发语音，收发 QQ 表情包（还能从聊天里把别人的表情偷进库），会看图，会画图（OpenAI 兼容 / 自定义接口）。
+- **表达**：edge-tts / CosyVoice / GPT-SoVITS / 任意 HTTP 接口发语音，收发 QQ 表情包（还能从聊天里把别人的表情偷进库；她自己想发表情的概率可调），会看图，会画图（OpenAI 兼容 / 自定义接口）。
 - **记忆**：长期记忆（BM25 + 遗忘曲线）、每天定时整理出人物小档案 / 相处经验 / 说话方式，能翻聊天原文、能手动增删、能导出导入；面板里有人物卡片墙。
-- **情绪**：心情值按半衰期自然回落，聊得好会变好，也能用模型判断情绪。
+- **情绪**：心情值按半衰期自然回落，聊得好会变好，也能用模型判断情绪；面板「心情」页能看近 7 天的平均值曲线。
 - **社交**：主动搭话、QQ 空间写日记 / 逛空间回评论、B 站发评论、抖音私信、小黑盒看帖发帖。
 - **创作**：用她自己（或你指定的）音色翻唱，需要本地 Applio + RVC 环境。
 - **管理**：权限分级（主人 / 白名单 / 陌生人）、群管、联系人、危险命令确认、模块热插拔、完整备份迁移（可定时自动备份）。
@@ -41,7 +41,7 @@ QQ ⇄ SnowLuma（OneBot v11）⇄ Halobot 插件 ⇄ DSH 会话（自带 preset
 
 ```bash
 # 从 GitHub 装（推荐，认准 tag）
-dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.2.0
+dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.3.0
 
 # 或者 clone 下来本地装
 git clone git@github.com:HelloGitHub-zjh/dsh-halobot.git

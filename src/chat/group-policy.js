@@ -1,5 +1,7 @@
 // 群聊回复策略：什么时候必回、什么时候插话、什么时候闭嘴。纯函数，便于测试。
 
+import { INTERESTS } from '../core/words.js'
+
 export const DEFAULT_GROUP_POLICY = {
   wakeWords: ['哈洛', '洛洛', 'halo'],
   interjectChance: 0.15, // 普通消息的基础插话概率（话题越相关越高，最高 80%）
@@ -9,7 +11,7 @@ export const DEFAULT_GROUP_POLICY = {
   minRecentMessages: 3, // 最近 activeWindowSec 内至少有这么多条消息才算「群里在聊」
   activeWindowSec: 300,
   // 话题相关度：群里正在聊的东西和她有关（碰到她感兴趣的话题、或者她记得相关的事），才可能插话
-  interests: ['白米饭', '米饭', '吃饭', '好吃', '饿了', '游戏', '追剧', '番剧', '动漫', '猫', '狗', '鲸鱼', '鱼', '睡觉', '熬夜', '困', '天气', '下雨', '表情包', '女仆', '可爱', '奶茶', '甜品'],
+  interests: INTERESTS,
   minRelevance: 0.25, // 相关度低于这个就不插话（0 = 不看话题，纯随机）
   burstMax: 8, // 安全刹车：burstWindowSec 秒内她最多说这么多次，超了就歇着（主人 @ 除外），只防失控
   burstWindowSec: 120,

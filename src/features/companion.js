@@ -2,14 +2,13 @@
 
 import { dataDir, readJson, writeJson } from '../core/store.js'
 import { askModel } from '../core/llm.js'
+import { UP, HURT } from '../core/words.js'
 
 // ---------------- 心情 ----------------
 // 0~100，基线 60。聊天里的话按关键词推一推，随时间按半衰期回到基线。
 // 心情明显偏离平常时，每一轮都告诉她现在的状态和具体的说话方式；平平常常时不说（免得把性格念「定」住）。
 // 心情还会实际影响行为：发表情包 / 语音的概率、回复快慢、群里插话的积极程度。
 
-const UP = ['喜欢你', '爱你', '想你', '可爱', '好看', '漂亮', '聪明', '真棒', '厉害', '牛', '谢谢', '辛苦', '晚安', '早安', '抱抱', '摸摸', '贴贴', '乖', '宝贝', '爱了', '哈哈哈', '白米饭', '好吃', '请你吃']
-const DOWN = ['讨厌', '滚', '烦死', '闭嘴', '笨', '蠢', '傻', '丑', '垃圾', '废物', '恶心', '无聊', '走开', '别理我', '不理你', '别说话', '生气', '难过', '烦人']
 
 export function moodLabel(v) {
   if (v >= 85) return '超开心'
@@ -41,7 +40,7 @@ export function scoreText(text) {
   const t = String(text || '')
   let d = 0
   for (const w of UP) if (t.includes(w)) d += 6
-  for (const w of DOWN) if (t.includes(w)) d -= 8
+  for (const w of HURT) if (t.includes(w)) d -= 8
   return Math.max(-20, Math.min(20, d))
 }
 
@@ -66,8 +65,27 @@ export function parseMoodJudge(out) {
 
 export function createMood({ getConfig, dsh }) {
   const file = () => dataDir('mood.json')
-  const load = () => readJson(file(), () => ({ value: 65, at: Date.now(), reason: '', history: [] }))
+  const load = () => readJson(file(), () => ({ value: 65, at: Date.now(), reason: '', history: [], days: {} }))
   const save = (s) => writeJson(file(), s)
+  // 每天按 10 分钟粒度记一条，面板画近 7 天的曲线；只留 8 天
+  const SERIES_KEEP_DAYS = 8
+  const SAMPLE_GAP_MS = 5 * 60_000
+  let lastSampleAt = 0
+  const dayKeyOf = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  const addDay = (s, v) => {
+    const days = s.days && typeof s.days === 'object' ? s.days : {}
+    const key = dayKeyOf()
+    const b = days[key] || { n: 0, sum: 0, min: v, max: v, last: v }
+    b.n += 1
+    b.sum += v
+    b.min = Math.min(b.min, v)
+    b.max = Math.max(b.max, v)
+    b.last = v
+    days[key] = b
+    const keep = Object.keys(days).sort().slice(-SERIES_KEEP_DAYS)
+    s.days = Object.fromEntries(keep.map((k) => [k, days[k]]))
+    return s
+  }
   const current = () => {
     const s = load()
     return Math.round(decayed(s.value, s.at, getConfig().mood.halfLifeHours))
@@ -81,12 +99,42 @@ export function createMood({ getConfig, dsh }) {
     s.at = Date.now()
     s.reason = reason
     s.history = [{ at: Date.now(), from: before, to: Math.round(s.value), reason }, ...(s.history || [])].slice(0, 20)
+    addDay(s, Math.round(s.value))
     save(s)
+  }
+  /** 记一条今天的采样（面板曲线用）；五分钟内重复调用只记一次。 */
+  function sample(force = false) {
+    if (!getConfig().mood.enabled) return
+    const now = Date.now()
+    if (!force && now - lastSampleAt < SAMPLE_GAP_MS) return
+    lastSampleAt = now
+    const s = load()
+    addDay(s, Math.round(s.value))
+    save(s)
+  }
+  /** 近 n 天的曲线：[{ day, avg, min, max, last, n }]，没有数据的日子 avg 为 null。 */
+  function series(n = 7) {
+    const days = load().days || {}
+    const out = []
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      const key = dayKeyOf(d)
+      const b = days[key]
+      out.push({ day: key, avg: b ? Math.round(b.sum / Math.max(1, b.n)) : null, min: b ? b.min : null, max: b ? b.max : null, last: b ? b.last : null, n: b ? b.n : 0 })
+    }
+    return out
   }
   return {
     current,
     label: () => moodLabel(current()),
-    state: () => ({ ...load(), value: current(), label: moodLabel(current()) }),
+    state: () => {
+      sample()
+      const v = current()
+      return { ...load(), value: v, label: moodLabel(v), series: series(7) }
+    },
+    sample,
+    series,
     effects: () => (getConfig().mood.enabled ? moodEffects(current()) : moodEffects(60)),
     nudge,
     /**

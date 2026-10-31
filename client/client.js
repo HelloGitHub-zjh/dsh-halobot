@@ -1569,6 +1569,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       }
       return h('div', { className: 'ab-grid' },
         h(Card, { title: '表情包', right: f.sw('stickers.enabled'), desc: '回复里写 <sticker:名字> 就会发对应的表情；也会按概率自动配一张。' },
+          h(Row, { label: '回复里写表情的发出去概率', hint: '她主动写 <sticker:名字> 时，按这个概率真的发；调低就不那么爱发表情了。心情好的时候会再高一点' }, f.percent('stickers.inlineChance')),
           h(Row, { label: '自动配表情的概率' }, f.percent('stickers.autoChance')),
           h(Row, { label: '夹 QQ 小黄脸', hint: '回复里能夹 QQ 自带的系统表情（/捂脸 /斜眼笑 这种），和文字在同一条消息里' }, f.sw('stickers.faces')),
           h(Row, { label: '偷表情', hint: '别人发的表情包会被收藏（普通照片不收）。' }, f.sw('stickers.collect'), h('span', { className: 'ab-muted' }, '从群里'), f.sw('stickers.fromGroups'), h('span', { className: 'ab-muted' }, '从私聊'), f.sw('stickers.fromPrivate')),
@@ -1817,6 +1818,24 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const moodCard = !modOn(st, 'mood') ? h(ModOff, { name: '心情' }) : h(Card, { title: '心情', right: f.sw('mood.enabled'), desc: '被夸、被哄、被凶都会影响她的心情（对她说的话、主人的话影响更大），过一阵子慢慢回到平常。心情好时她话多、更爱发表情和语音、回得快、群里更爱插话；心情差时话少、回得慢、少发表情，还会带点小脾气。' },
           h('div', { className: 'ab-flex', style: { marginBottom: 8 } }, h('b', null, st.mood.label), h('span', { className: 'ab-muted' }, st.mood.value + ' / 100'), st.mood.reason ? h('span', { className: 'ab-muted ab-small' }, '· 因为' + st.mood.reason) : null),
           h('div', { className: 'ab-mood' }, h('i', { style: { width: Math.max(4, st.mood.value) + '%' } })),
+          st.mood.series && st.mood.series.some((x) => x.avg != null) ? h('div', { style: { marginTop: 12 } },
+            h('div', { className: 'ab-muted ab-small' }, '近 7 天平均（每 10 分钟记一次，60 是平常）'),
+            h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 6, height: 64, marginTop: 6 } },
+              st.mood.series.map((x) => h('div', {
+                key: x.day,
+                title: x.avg == null ? x.day + ' 没有记录' : x.day + ' 平均 ' + x.avg + '（' + x.min + '–' + x.max + '，' + x.n + ' 次）',
+                style: { flex: '1 1 0', display: 'flex', alignItems: 'flex-end', minWidth: 0 },
+              }, h('i', {
+                style: {
+                  width: '100%',
+                  height: Math.max(3, Math.round(64 * (x.avg == null ? 60 : x.avg) / 100)) + 'px',
+                  borderRadius: 4,
+                  background: x.avg == null ? 'var(--ab-line)' : x.avg >= 70 ? 'var(--ab-ok)' : x.avg >= 50 ? 'var(--ab-sea)' : 'var(--ab-warn)',
+                  opacity: x.avg == null ? 0.5 : 0.85,
+                },
+              })))),
+            h('div', { style: { display: 'flex', gap: 6, marginTop: 4 } },
+              st.mood.series.map((x) => h('div', { key: x.day, className: 'ab-muted ab-small', style: { flex: '1 1 0', textAlign: 'center', minWidth: 0 } }, String(x.day).slice(5))))) : null,
           h('div', { style: { marginTop: 10 } },
             h(Row, { label: '多久回到平常', hint: '半衰期' }, f.range('mood.halfLifeHours', 0.5, 24, 0.5, (v) => v + ' 小时')),
             h(Row, { label: '用模型判断心情', hint: '每轮聊完用模型判一次（能分清开玩笑和真骂、她主动找你时的心意），更准；每轮多一次很短的模型调用。关着就按关键词' }, f.sw('mood.judge'))),

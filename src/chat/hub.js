@@ -718,6 +718,19 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       return
     }
     let items = r.items
+    // 模型自己在回复里写的 <sticker:…>：按概率决定发不发（表情包太勤了，这里压一压）
+    // 概率 = stickers.inlineChance × 心情系数；被跳过的这一轮不再自动补表情，免得刚压下去又补上来
+    const wantedSticker = items.some((i) => i.kind === 'sticker')
+    if (cfg.stickers.enabled && wantedSticker) {
+      const chance = Math.min(1, Math.max(0, Number(cfg.stickers.inlineChance ?? 0.5) * mood().sticker))
+      const kept = items.filter((it) => it.kind !== 'sticker' || Math.random() < chance)
+      const dropped = items.length - kept.length
+      // 整轮只有表情时还是照发，不然就真的一句话都没有了
+      if (dropped > 0 && kept.some((i) => i.kind !== 'sticker')) {
+        items = kept
+        log.debug(`${chatId}：${dropped} 张表情按概率没发（${Math.round(chance * 100)}%）`)
+      }
+    }
     // 对方明确要语音、她却只打了字：整段改成语音发（模型偶尔会忘，这里兜底）
     if (opts.wantVoice && cfg.voice.enabled && !items.some((i) => i.kind === 'voice')) {
       const spoken = items.filter((i) => i.kind === 'text').map((i) => i.value).join('，')
@@ -733,7 +746,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     // 群里别刷屏：一段最多 3 条
     if (inGroup && items.length > 3) items = items.slice(0, 3)
     // 按概率补一张表情（群里已经有两条以上就不补了）
-    if (cfg.stickers.enabled && !items.some((i) => i.kind === 'sticker') && !(inGroup && items.length >= 2) && Math.random() < cfg.stickers.autoChance * mood().sticker) {
+    if (cfg.stickers.enabled && !wantedSticker && !items.some((i) => i.kind === 'sticker') && !(inGroup && items.length >= 2) && Math.random() < cfg.stickers.autoChance * mood().sticker) {
       const pick = stickers.pickForReply(texts.map((t) => t.value).join(' '))
       if (pick) items.push({ kind: 'sticker', value: pick })
     }

@@ -1,5 +1,6 @@
 // 内置模块：心情。聊天让她开心或低落，心情影响她发表情、发语音的频率和回复快慢，也会写进她的上下文。
-// 导出 createMood 的返回值：nudge(变化, 原因)、label()、state()、effects()、contextLine()、observe()、judge()。
+// 导出 createMood 的返回值：nudge(变化, 原因)、label()、state()、effects()、contextLine()、observe()、judge()、sample()、series()。
+// 每 10 分钟记一条当天的心情采样，面板「心情」页画近 7 天的曲线。
 
 import { createMood } from '../../features/companion.js'
 
@@ -12,6 +13,7 @@ export default {
   files: ['features/companion.js'],
   setup(api) {
     const mood = createMood({ getConfig: api.config, dsh: api.dsh })
+    api.every(10 * 60_000, () => mood.sample(), '心情采样')
     api.context(({ chat }) => (chat.kind === 'system' ? '' : mood.contextLine()))
     api.on('activity', (a) => {
       const cfg = api.config()
