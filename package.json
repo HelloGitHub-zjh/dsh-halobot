@@ -49,13 +49,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/CHANGE-ME/dsh-dafeiyu.git"
+    "url": "https://github.com/HelloGitHub-zjh/dsh-dafeiyu.git"
   },
-  "homepage": "https://github.com/CHANGE-ME/dsh-dafeiyu",
+  "homepage": "https://github.com/HelloGitHub-zjh/dsh-dafeiyu",
   "engines": {
     "node": ">=22.13.0"
   },
   "bugs": {
-    "url": "https://github.com/CHANGE-ME/dsh-dafeiyu/issues"
+    "url": "https://github.com/HelloGitHub-zjh/dsh-dafeiyu/issues"
   }
 }

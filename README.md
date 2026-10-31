@@ -2,7 +2,7 @@
 
 > **这是个人维护的独立分支**，基线是 [accomplish07zrh-eng/dsh-aurabot-qq](https://github.com/accomplish07zrh-eng/dsh-aurabot-qq) 的 1.1.24（MIT 许可）。
 > 与上游没有同步关系：上游的更新不会自动进来，只在需要时挑着移植，并记在 `CHANGELOG.md`。
-> 安装：`dsh plugin --profile desktop add github:CHANGE-ME/dsh-dafeiyu#v2.0.0`
+> 安装：`dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-dafeiyu#v2.0.0`
 
 原项目名字叫 Aurabot（插件入口仍叫 Aurabot，数据目录仍是 `~/.dsh/plugins-data/aurabot/`，这样换包名不丢配置和记忆）。
 
@@ -38,13 +38,13 @@ QQ ⇄ SnowLuma（OneBot v11，你自己安装）⇄ Aurabot 插件 ⇄ DSH 会�
 Windows 桌面版：
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:CHANGE-ME/dsh-dafeiyu
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:HelloGitHub-zjh/dsh-dafeiyu
 ```
 
 Linux / Docker：用 DSH 自己的命令行（把 `<profile>` 换成你在用的 profile；在容器里就进容器执行）：
 
 ```bash
-dsh plugin --profile <profile> add github:CHANGE-ME/dsh-dafeiyu
+dsh plugin --profile <profile> add github:HelloGitHub-zjh/dsh-dafeiyu
 ```
 
 装好后重启 DSH，打开左侧栏「自动化任务」下的 **Aurabot**，跟着设置向导走：
@@ -67,7 +67,7 @@ dsh plugin --profile <profile> add github:CHANGE-ME/dsh-dafeiyu
 再跑一遍上面的安装命令（拉取 GitHub 上的最新版），然后重启 DSH。设置、人格、记忆都会保留；有新版本时面板里也会提示。Windows 桌面版：
 
 ```powershell
-& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:CHANGE-ME/dsh-dafeiyu
+& "$env:LOCALAPPDATA\Programs\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd" plugin --profile desktop add github:HelloGitHub-zjh/dsh-dafeiyu
 ```
 
 ## 设计要点
