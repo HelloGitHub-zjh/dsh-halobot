@@ -52,6 +52,7 @@ dsh plugin --profile desktop add file:/绝对路径/dsh-halobot
 
 - **升级**：`dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.x.x` 后重启。
 - **卸载**：`dsh plugin --profile desktop remove dsh-halobot`。数据目录不会删。
+- **本地改代码后**：`~/.dsh/profiles/desktop/package.json` 里这条是按 tag 钉住的，DSH 启动会按声明重装，直接把文件 `cp` 到 `node_modules` 会在下次启动被还原。要么走上面的发版流程（打 tag → 改 tag → `pnpm install`），要么临时用 `dsh plugin --profile desktop add file:/绝对路径/dsh-halobot`。
 
 ## 第一次用（大约 10 分钟）
 
