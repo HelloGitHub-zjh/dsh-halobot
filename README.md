@@ -41,7 +41,7 @@ QQ ⇄ SnowLuma（OneBot v11）⇄ Halobot 插件 ⇄ DSH 会话（自带 preset
 
 ```bash
 # 从 GitHub 装（推荐，认准 tag）
-dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.1.0
+dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.2.0
 
 # 或者 clone 下来本地装
 git clone git@github.com:HelloGitHub-zjh/dsh-halobot.git
@@ -144,10 +144,6 @@ personas/halobot.md    默认人格
 docs/USER-MANUAL.md    小白使用手册
 extensions/            可选扩展（如贴吧阅读器）
 ```
-
-## 从 Aurabot / 大肥鱼迁移
-
-老版本的数据目录是 `~/.dsh/plugins-data/aurabot/`，插件**第一次启动时会自动整个搬到 `halobot/`**（仅当新目录不存在），配置、记忆、流水、表情库、人格都跟着走。老的备份包（`aurabot-backup`）也能直接导入。
 
 ## 安全提醒
 

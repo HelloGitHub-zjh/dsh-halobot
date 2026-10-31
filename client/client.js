@@ -1326,7 +1326,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         ),
                 h(Card, { title: '危险命令确认', right: f.sw('security.dangerConfirm'), desc: '打开后，她在私聊里要执行终端危险命令（删根目录、格式化、关机、下载后直接执行等）之前，会先发 QQ 私聊问你；你回复「确认」才执行，回复「取消」或 60 秒没回就拦下。默认关。只拦真正致命的命令，普通删除/构建/改文件不受影响。' }),
 h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复她的消息、或者提到下面这些名字时，她一定会回。' },
-          h(Row, { label: '唤醒词', hint: '一行一个' }, f.list('group.wakeWords', { placeholder: '哈洛\n肥鱼' })),
+          h(Row, { label: '唤醒词', hint: '一行一个' }, f.list('group.wakeWords', { placeholder: '哈洛\n洛洛\nHalo' })),
         ),
         h(Card, { title: '安全刹车', desc: '只防失控（比如和别的机器人聊停不下来）：她在一个群里短时间说太多就歇一会儿，主人 @ 她除外。平时碰不到。' },
           h(Row, { label: '最多说几次' }, f.range('group.burstMax', 1, 20, 1, (v) => v + ' 次'), h('span', { className: 'ab-muted' }, '/'), f.range('group.burstWindowSec', 30, 600, 30, (v) => Math.round(v / 6) / 10 + ' 分钟')),
@@ -3236,7 +3236,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           fr.onload = () => {
             try {
               const bundle = JSON.parse(String(fr.result || ''))
-              if (!bundle || !['halobot-backup', 'aurabot-backup', 'dafeiyu-backup'].includes(bundle.format)) throw new Error('这不是 Halobot 的备份文件')
+              if (!bundle || bundle.format !== 'halobot-backup') throw new Error('这不是 Halobot 的备份文件')
               const list = Object.entries(bundle.parts || {}).map(([id, box]) => {
                 const files = Object.keys((box && box.files) || {})
                 let bytes = 0

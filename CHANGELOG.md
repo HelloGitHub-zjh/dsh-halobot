@@ -1,3 +1,11 @@
+## 3.2.0 · 清掉 Aurabot 遗留，昵称改成 Halo / 哈洛 / 洛洛
+
+这一版做减法：把 3.0 更名时留下的所有「自动迁移旧版本」代码删干净，只保留 LICENSE 里的上游署名。
+
+- **删掉 Aurabot 相关迁移**：数据目录不再自动从 `~/.dsh/plugins-data/aurabot/` 搬过来，也不再认 `AURABOT_DATA_DIR`；`personas/dafeiyu.md` 不再自动改名为 `halobot.md`；旧唤醒词「大肥鱼」「肥鱼」不再自动替换；备份导入只认 `halobot-backup`，不认 `aurabot-backup` / `dafeiyu-backup`。如果你还停在 2.x，先把数据目录手动改名为 `halobot` 再升级。
+- **昵称**：她只认 **Halo / 哈洛 / 洛洛**，群聊唤醒词匹配不区分英文大小写；「肥鱼」不再是她的别名，代码里判断「她在说她自己」的地方也一并换掉。
+- 顺手修掉一处改名遗留：`sessions.json` 里 preset 还是 `aurabot-social` 的会话（空间日记 / 空间互动），因为和现在的 preset id 对不上，下次触发会悄悄新建会话、丢掉旧上下文；现在按 `halobot-social` 复用。
+
 ## 3.0.0 · 正式更名 Halobot（哈洛）
 
 这一版只做一件事：把整条身份线统一成 **Halobot / 哈洛**，不再出现 Aurabot、大肥鱼、dafeiyu 这些旧名字。

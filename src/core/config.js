@@ -306,11 +306,9 @@ export function normalize(raw) {
   c.files.dirs = (Array.isArray(c.files.dirs) ? c.files.dirs : String(c.files.dirs || '').split(/[\n,，;；]+/))
     .map((s) => String(s).trim()).filter((s) => /^([a-zA-Z]:[\\/]|\/)/.test(s)).slice(0, 20)
   const g = c.group
-  const LEGACY_NAMES = { 大肥鱼: '哈洛', 肥鱼: '哈洛' }
   g.wakeWords = [...new Set((Array.isArray(g.wakeWords) ? g.wakeWords : String(g.wakeWords || '').split(/[\s,，]+/))
     .map((s) => String(s).trim())
-    .filter(Boolean)
-    .map((s) => LEGACY_NAMES[s] || s))]
+    .filter(Boolean))]
   g.interjectChance = num(g.interjectChance, 0.15, 0, 1)
   g.cooldownSec = num(g.cooldownSec, 90, 0, 86400)
   g.maxPerHour = num(g.maxPerHour, 6, 0, 120)

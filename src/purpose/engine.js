@@ -829,7 +829,7 @@ const POSITIVE_RE = /开心|喜欢|爱|可爱|好笑|笑死|厉害|治愈|温暖
 const NEGATIVE_RE = /难过|累|焦虑|害怕|孤独|寂寞|羡慕|嫉妒|生气|烦|压力|遗憾|哭|担心|崩溃/;
 const AROUSAL_RE = /笑死|炸|疯|激动|震撼|刺激|太|超|绝了|!!!|！！/;
 const RELATION_RE = /爱|关系|人机|机器人|ai|寂寞|孤独|陪|想你|主人/;
-const SELF_REF_RE = /哈洛|肥鱼|ai|人工智能|机器人|模型|人格|插件|harness|dsh/;
+const SELF_REF_RE = /哈洛|洛洛|halo|ai|人工智能|机器人|模型|人格|插件|harness|dsh/i;
 
 /** 0~1 的驱动向量；坏值回默认，不抛。 */
 export function normalizeDrives(input) {

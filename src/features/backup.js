@@ -9,7 +9,6 @@ import { join, dirname } from 'node:path'
 import { dataDir, ensureDir } from '../core/store.js'
 
 export const BUNDLE_FORMAT = 'halobot-backup'
-export const LEGACY_FORMATS = ['aurabot-backup', 'dafeiyu-backup'] // 旧版导出的包也认
 export const BUNDLE_VERSION = 1
 /** 导入时最多收这么大的包（base64 之后会比原文件大三成左右）。 */
 export const MAX_IMPORT_BYTES = 80 * 1024 * 1024
@@ -93,7 +92,7 @@ function stamp(now = new Date()) {
 /** 检查一个包：格式对不对、里面有哪些部分。面板选文件后先拿它看看。 */
 export function bundleSummary(bundle) {
   if (!bundle || typeof bundle !== 'object') throw new Error('读不出这个文件')
-  if (bundle.format !== BUNDLE_FORMAT && !LEGACY_FORMATS.includes(bundle.format)) throw new Error('这不是 Halobot 的备份文件')
+  if (bundle.format !== BUNDLE_FORMAT) throw new Error('这不是 Halobot 的备份文件')
   if (Number(bundle.version) > BUNDLE_VERSION) throw new Error('这个备份比现在的插件新（v' + bundle.version + '），先更新插件再导入')
   const base = new Map(PARTS.map((p) => [p.id, p]))
   const parts = []

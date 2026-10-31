@@ -1,7 +1,7 @@
 // 群聊回复策略：什么时候必回、什么时候插话、什么时候闭嘴。纯函数，便于测试。
 
 export const DEFAULT_GROUP_POLICY = {
-  wakeWords: ['哈洛'],
+  wakeWords: ['哈洛', '洛洛', 'halo'],
   interjectChance: 0.15, // 普通消息的基础插话概率（话题越相关越高，最高 80%）
   cooldownSec: 90, // 两次插话至少间隔
   maxPerHour: 6, // 每群每小时插话上限
@@ -70,7 +70,8 @@ export function decideGroupReply(p) {
   }
   if (p.mentioned) return { reply: true, mode: 'must', reason: '被 @' }
   if (p.repliedToBot) return { reply: true, mode: 'must', reason: '引用了她的消息' }
-  const hit = (pol.wakeWords || []).find((w) => w && text.includes(w))
+  const lower = String(text || '').toLowerCase()
+  const hit = (pol.wakeWords || []).find((w) => w && lower.includes(String(w).toLowerCase()))
   if (hit) return { reply: true, mode: 'must', reason: `叫到了「${hit}」` }
   const rel = typeof p.relevance === 'number' ? p.relevance : 1
 
