@@ -144,3 +144,56 @@ export function applyBundle(bundle, parts) {
   }
   return { ok: applied.length > 0, applied, skipped, backup: applied.length ? dir : '' }
 }
+
+
+// ---------- 自动备份：按间隔把整份数据打进 backups/，只留最近几份 ----------
+
+const AUTO_DIR = 'backups'
+
+/** 备份文件名：auto-2026-10-31-1830.json（本地时间，人看着方便）。 */
+function stampName(d = new Date()) {
+  const p = (n) => String(n).padStart(2, '0')
+  return `auto-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`
+}
+
+/** 现有的自动备份（新的在前）。 */
+export function listAuto() {
+  try {
+    return readdirSync(dataDir(AUTO_DIR))
+      .filter((n) => /^auto-.*\.json$/.test(n))
+      .map((n) => {
+        let bytes = 0
+        let at = 0
+        try { const st = statSync(dataDir(AUTO_DIR, n)); bytes = st.size; at = st.mtimeMs } catch (error) {}
+        return { name: n, bytes, at }
+      })
+      .sort((a, b) => b.at - a.at)
+  } catch (error) {
+    return []
+  }
+}
+
+/** 写一份自动备份，然后只留最近 keep 份（最新的永远留着）。 */
+export function saveAuto(bundle, keep = 7) {
+  ensureDir(dataDir(AUTO_DIR))
+  const name = stampName()
+  writeFileSync(dataDir(AUTO_DIR, name), JSON.stringify(bundle), 'utf8')
+  const max = Math.max(1, Math.min(60, Number(keep) || 7))
+  const keepNames = new Set(listAuto().slice(0, max).map((f) => f.name))
+  for (const f of listAuto()) if (!keepNames.has(f.name)) { try { unlinkSync(dataDir(AUTO_DIR, f.name)) } catch (error) {} }
+  return { name, bytes: statSync(dataDir(AUTO_DIR, name)).size }
+}
+
+/** 读一份自动备份（只认备份目录里的 auto-*.json）。 */
+export function readAuto(name) {
+  const safe = String(name || '').replace(/[\\/]/g, '')
+  if (!/^auto-.*\.json$/.test(safe)) return null
+  try { return JSON.parse(readFileSync(dataDir(AUTO_DIR, safe), 'utf8')) } catch (error) { return null }
+}
+
+/** 删一份自动备份。 */
+export function deleteAuto(name) {
+  const safe = String(name || '').replace(/[\\/]/g, '')
+  if (!/^auto-.*\.json$/.test(safe)) return false
+  try { unlinkSync(dataDir(AUTO_DIR, safe)); return true } catch (error) { return false }
+}

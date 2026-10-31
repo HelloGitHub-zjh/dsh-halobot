@@ -149,11 +149,17 @@ export function createQzone({ getConfig, onebot, hub, log, onDiary, pickImage })
       // 名单/范围不合法就别让模型白写一篇再失败
       try { resolveAudience(getConfig(), visibility) } catch (error) { return { ok: false, message: error.message } }
       const now = new Date()
-      const excerpt = todayExcerpt()
+      // 面板里「参考当天聊天」关着时完全不去读聊天流水：空间说说写成什么样，她自己拿主意。
+      const useChatLog = cfg.useChatLog !== false
+      const excerpt = useChatLog ? todayExcerpt() : ''
       const prompt = [
         `【写空间日记】现在是 ${now.getMonth() + 1} 月 ${now.getDate()} 日 ${now.toTimeString().slice(0, 5)}。`,
-        excerpt ? `今天你在 QQ 上的聊天片段（「我」是你自己）：\n${excerpt}` : '今天还没怎么聊天。',
-        `请用你自己的口吻写一条 QQ 空间说说，第一人称，${cfg.minChars}~${cfg.maxChars} 个字，像真人随手发的动态：可以写今天发生的小事、心情、想吃的白米饭。`,
+        useChatLog
+          ? (excerpt ? `今天你在 QQ 上的聊天片段（「我」是你自己）：\n${excerpt}` : '今天还没怎么聊天。')
+          : '这条说说和今天的聊天无关：别去翻、也别复述今天在 QQ 上聊过的事，写点你自己此刻想说的。',
+        useChatLog
+          ? `请用你自己的口吻写一条 QQ 空间说说，第一人称，${cfg.minChars}~${cfg.maxChars} 个字，像真人随手发的动态：可以写今天发生的小事、心情、想吃的白米饭。`
+          : `请用你自己的口吻写一条 QQ 空间说说，第一人称，${cfg.minChars}~${cfg.maxChars} 个字，像真人随手发的动态：想到什么写什么——一时的念头、窗外的一眼、随口的一句感慨、最近惦记的一件小事都可以，不必和谁有关。`,
         '不要分条、不要 |||、不要 <voice>/<sticker> 标记、不要 Markdown、不要加引号，只输出说说正文本身。',
       ].join('\n\n')
       let text = await hub.runSystemTurn('diary', '空间日记', prompt)

@@ -151,33 +151,74 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
   }
   const sentIds = new Set()
   const STAT_KEYS = ['received', 'sent', 'voice', 'stickers', 'image', 'song', 'asr', 'errors']
-  const stats = { received: 0, sent: 0, voice: 0, stickers: 0, image: 0, song: 0, asr: 0, errors: 0, day: new Date().toDateString() }
+  const STATS_KEEP_DAYS = 30 // 面板「统计」最多看 30 天
+  const zeroStats = () => Object.fromEntries(STAT_KEYS.map((k) => [k, 0]))
+  const stats = { ...zeroStats(), day: new Date().toDateString(), days: {}, chats: {} }
+  const dayStamp = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   let selfId = ''
   let lastChatAt = 0
   let lastOwnerChatAt = 0
   let lastBotToOwner = { at: 0, text: '' } // 她在主人私聊里最后说的话
 
-  // 当天的计数落盘：不然 DSH 一重启，「今天收到」全归零，面板看着像坏了
+  // 计数落盘：不然 DSH 一重启，「今天收到」全归零，面板看着像坏了。
+  // 新版按天存 30 天（面板「统计」要画趋势），外带一份「今天按会话」的收发数。
   const statsFile = () => dataDir('stats.json')
+  const statsSnapshot = () => Object.fromEntries(STAT_KEYS.map((k) => [k, stats[k]]))
   function loadStats() {
     const j = readJson(statsFile(), null)
-    if (!j || j.day !== stats.day) return
-    for (const k of STAT_KEYS) if (Number.isFinite(Number(j[k]))) stats[k] = Number(j[k])
+    if (!j || typeof j !== 'object') return
+    const sameDay = j.day === stats.day
+    if (j.v === 2 && j.days && typeof j.days === 'object') {
+      stats.days = j.days
+      if (j.chats && typeof j.chats === 'object') stats.chats = j.chats
+      const today = sameDay ? j.today || stats.days[dayStamp()] : stats.days[dayStamp()]
+      if (today) for (const k of STAT_KEYS) if (Number.isFinite(Number(today[k]))) stats[k] = Number(today[k])
+      return
+    }
+    // 旧版：文件里就是当天的一份平铺数字
+    if (sameDay) for (const k of STAT_KEYS) if (Number.isFinite(Number(j[k]))) stats[k] = Number(j[k])
+    stats.days[dayStamp()] = statsSnapshot()
   }
   function saveStats() {
-    try { writeJson(statsFile(), stats) } catch (error) {}
+    try {
+      const key = dayStamp()
+      stats.days[key] = statsSnapshot()
+      const keys = Object.keys(stats.days).sort()
+      for (const old of keys.slice(0, Math.max(0, keys.length - STATS_KEEP_DAYS))) delete stats.days[old]
+      writeJson(statsFile(), { v: 2, day: stats.day, today: statsSnapshot(), chats: stats.chats, days: stats.days })
+    } catch (error) {}
   }
-  function bump(k) {
+  function bump(k, chatId = '') {
     if (!STAT_KEYS.includes(k)) return
     const d = new Date().toDateString()
     if (stats.day !== d) {
       for (const key of STAT_KEYS) stats[key] = 0
       stats.day = d
+      stats.chats = {} // 按会话的收发数只记当天
     }
     stats[k]++
+    if (chatId && (k === 'received' || k === 'sent')) {
+      const c = stats.chats[chatId] || (stats.chats[chatId] = { received: 0, sent: 0, at: 0 })
+      c[k]++
+      c.at = Date.now()
+    }
     saveStats()
   }
   loadStats()
+
+  /** 最近 n 天的逐日计数（没数据的天补 0，图才对得齐）。 */
+  function statsHistory(n = 7) {
+    const out = []
+    const now = new Date()
+    for (let i = n - 1; i >= 0; i--) {
+      const d = new Date(now)
+      d.setDate(d.getDate() - i)
+      const key = dayStamp(d)
+      const cur = key === dayStamp(now) ? statsSnapshot() : stats.days[key]
+      out.push({ day: key, ...(cur || zeroStats()) })
+    }
+    return out
+  }
 
   // ---------- 聊天流水（给空间日记、主动搭话、面板用） ----------
   function logChat(chatId, who, text, uid = '') {
@@ -480,7 +521,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
         sentIds.add(String(r.message_id))
         if (sentIds.size > 500) sentIds.delete(sentIds.values().next().value)
       }
-      bump('sent')
+      bump('sent', chatId)
       return r
     } catch (error) {
       bump('errors')
@@ -606,7 +647,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     const srcLabel = external ? (src.startsWith('base64://') ? 'base64' : '外部地址') : size < 1024 ? size + ' B' : Math.round(size / 1024) + ' KB'
     try {
       const r = await onebot.call(action, params, { timeoutMs: FILE_TIMEOUT_MS })
-      bump('sent')
+      bump('sent', chatId)
       log.info(`${chatId}：发文件「${label}」（${srcLabel}）`)
       return r
     } catch (error) {
@@ -619,7 +660,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       try {
         const b64 = 'base64://' + readFileSync(src).toString('base64')
         const r = await onebot.call(action, { ...params, file: b64 }, { timeoutMs: FILE_TIMEOUT_MS })
-        bump('sent')
+        bump('sent', chatId)
         log.info(`${chatId}：发文件「${label}」（网关看不到本机路径，改走 base64）`)
         return r
       } catch (error2) {
@@ -644,7 +685,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     if (!seg) return false
     await sendSegments(chatId, [...quote(replyId), ...mention(userId), seg], `[表情] ${item.name || item.md5.slice(0, 8)}`)
     stickers.markUsed?.(item.md5)
-    bump('stickers')
+    bump('stickers', chatId)
     return true
   }
 
@@ -1010,7 +1051,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     if (msg.userId === selfId) return
     // 按群头衔过滤：这条当没看见（不进群聊上下文、不触发回复，@ 她、主人命令也一样）
     if (msg.kind === 'group' && await titleFilter.shouldIgnore(event)) return
-    bump('received')
+    bump('received', msg.chatId)
     const now = Date.now()
 
     // 群里的每条消息都记进缓冲（给上下文和「群里在不在聊」用）
@@ -1658,7 +1699,9 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     deleteChatLog,
     sessions: () => map().chats,
     groupName,
-    stats: () => ({ ...stats }),
+    stats: () => ({ ...statsSnapshot(), day: stats.day }),
+    statsHistory,
+    chatStats: () => ({ ...stats.chats }),
     bump,
     get lastChatAt() { return lastChatAt },
     get lastOwnerChatAt() { return lastOwnerChatAt },

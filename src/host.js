@@ -21,9 +21,10 @@ import { createSnowLumaManager, DOWNLOAD_PAGE } from './snowluma/manager.js'
 import { createHub, workspaceDirOf } from './chat/hub.js'
 import { createLocal, fileOf, toImageBuffer } from './local/local.js'
 import { createGroupRoles } from './chat/group-roles.js'
-import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache } from './core/llm.js'
+import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache, setUsageSink } from './core/llm.js'
 import { mimeOf } from './chat/inbound.js'
-import { backupStatus, makeBundle, applyBundle } from './features/backup.js'
+import { backupStatus, makeBundle, applyBundle, PARTS, listAuto, saveAuto, readAuto, deleteAuto } from './features/backup.js'
+import { createUsage, dayKey } from './features/usage.js'
 import { dataDir, ensureDir } from './core/store.js'
 import { createUpdateChecker, changelogSection } from './core/update.js'
 import { parseCommand, runCommand, createMutes, commandList } from './chat/commands.js'
@@ -270,6 +271,12 @@ export function apply(ctx) {
     },
   })
 
+  // ---------- 模型用量（概览卡） ----------
+  // QQ 会话的 tokenUsage 增量 + 后台小任务自己报的 usage，一起按天记账，给面板概览那张卡用。
+  // 采样很便宜（几条会话读一次投影/投影缓存），60 秒一次就够：面板每 5 秒拉 /state 时会顺带把增量记上。
+  const usage = createUsage({ dsh: ctx, log: logger.child('usage'), getConfig, sessions: () => hub.sessions() })
+  setUsageSink((u) => usage.bump(u))
+
   // ---------- 面板接口的小工具 ----------
   const send = (res, code, body, type = 'application/json; charset=utf-8') => {
     try {
@@ -391,12 +398,16 @@ export function apply(ctx) {
   }
   const safe = (fn, label) => () => { Promise.resolve().then(fn).catch((error) => log.warn(`${label}出错：`, error.message)) }
   ctx.effect(() => ctx.interval(safe(watchdog, '看门狗'), 30_000), 'halobot: 看门狗')
+  // 面板没开着也要把用量记上：60 秒采一次，换天、重启都不丢
+  ctx.effect(() => ctx.interval(safe(() => { usage.sample() }, '用量采样'), 60_000), 'halobot: 用量采样')
   setTimeout(safe(watchdog, '看门狗'), 3000).unref?.()
   ctx.effect(() => () => {
     hub.disposeRecentMedia()
     mods.dispose()
     onebot.stop()
     snowluma.dispose()
+    setUsageSink(null)
+    usage.save()
   }, 'halobot: 收尾')
 
   // ---------- 面板接口 ----------
@@ -442,6 +453,7 @@ export function apply(ctx) {
       voice: { edgeInstalled: use('voice')?.edgeInstalled?.() ?? false },
       song: use('song')?.status?.() ?? null,
       sessions: hub.sessions(),
+      usage: usage.summary(),
       workspaceDir: workspaceDirOf(cfg),
       personas: listPersonas(),
       modules: mods.status(),
@@ -561,10 +573,149 @@ export function apply(ctx) {
     log.info(`面板已保存目的引擎设置｜${Object.keys(extPatch).map((k) => k + '=' + extPatch[k]).concat(Object.keys(spPatch).map((k) => k + '=' + spPatch[k])).join(' ')}`)
     return { ok: true, purpose: purposeOverview() }
   })
+  // ---------- 统计 / 会话管理 ----------
+  /** 面板「统计」和「会话管理」共用的一份：逐日计数 + 每条会话的今天收发和累计 token。 */
+  function statsPayload() {
+    const chatStats = (typeof hub.chatStats === 'function' ? hub.chatStats() : {}) || {}
+    const totals = (typeof usage.chatTotals === 'function' ? usage.chatTotals() : {}) || {}
+    const list = Object.entries(hub.sessions()).map(([chatId, e]) => {
+      const t = totals[e.sessionId] || null
+      const s0 = chatStats[chatId] || null
+      return {
+        chatId,
+        sessionId: e.sessionId,
+        title: e.title || chatId,
+        preset: e.preset || '',
+        level: e.level || '',
+        model: e.model || null,
+        createdAt: e.createdAt || 0,
+        bornDay: e.createdAt ? dayKey(new Date(e.createdAt)) : '',
+        today: s0 ? { received: s0.received || 0, sent: s0.sent || 0, at: s0.at || 0 } : { received: 0, sent: 0, at: 0 },
+        tokens: t ? { uncached: t.uncachedInputTokens || 0, cacheRead: t.cacheReadTokens || 0, cacheWrite: t.cacheWriteTokens || 0, output: t.outputTokens || 0 } : null,
+      }
+    }).sort((a, b) => (b.today.at || b.createdAt) - (a.today.at || a.createdAt))
+    return { list, chatStats }
+  }
+
+  route('/stats', async (req) => {
+    const days = Number(query(req).days) === 30 ? 30 : 7
+    const hist = hub.statsHistory(days)
+    const { list } = statsPayload()
+    const totals = {}
+    for (const k of ['received', 'sent', 'voice', 'stickers', 'image', 'song', 'asr', 'errors']) totals[k] = hist.reduce((s0, d) => s0 + (Number(d[k]) || 0), 0)
+    // 平均每天收发、活跃天数，面板上直接给结论，不用她自己算
+    const active = hist.filter((d) => d.received + d.sent > 0).length
+    return { ok: true, days: hist, totals, active, chats: list }
+  })
+  route('/sessions/list', async () => {
+    const { list } = statsPayload()
+    return { ok: true, list, workspaceDir: workspaceDirOf(cfg) }
+  })
+  route('/sessions/reset-one', async (req) => {
+    const body = await readBody(req)
+    const chatId = String(body.chatId || '')
+    if (!chatId) return { ok: false, message: '没给会话' }
+    const ok = hub.resetChat(chatId)
+    return ok ? { ok: true, message: '这个会话重新开始了，旧的已经归档（侧栏归档里还能找到）' } : { ok: false, message: '没有这个会话，刷新一下看看' }
+  })
+
+  // ---------- 日志：区域清单 / 搜索 / 下载 ----------
   route('/logs', async (req) => {
     const q = query(req)
-    return { ok: true, entries: logger.recent(Number(q.limit) || 300, { level: q.level || '', area: q.area || '' }) }
+    return {
+      ok: true,
+      entries: logger.recent(Number(q.limit) || 300, { level: q.level || '', area: q.area || '', q: q.q || '' }),
+      areas: logger.areas(),
+      files: logger.files().slice(0, 14),
+    }
   })
+  route('/logs/file', async (req) => {
+    const name = String(query(req).name || '')
+    const text = logger.read(name)
+    if (text === null) return { ok: false, message: '没有这个日志文件' }
+    return { ok: true, name: name.replace(/[\\/]/g, ''), text }
+  })
+
+  // ---------- 自动备份 ----------
+  const backupState = () => {
+    const list = listAuto()
+    return { config: cfg.backup, list, lastAt: list[0] ? list[0].at : 0, dir: dataDir('backups') }
+  }
+  async function runAutoBackup(reason = '手动') {
+    const r = saveAuto(makeBundle(PARTS.map((x) => x.id), { version: VERSION, reason }), cfg.backup.keep)
+    log.info(`备份好了（${reason}）：${r.name} · ${Math.round(r.bytes / 1024)} KB`)
+    return r
+  }
+  route('/backup/auto', async () => ({ ok: true, ...backupState() }))
+  route('/backup/run', async () => {
+    try {
+      const r = await runAutoBackup('手动')
+      return { ok: true, ...backupState(), message: `备份好了：${r.name}（${Math.round(r.bytes / 1024)} KB）` }
+    } catch (error) {
+      return { ok: false, message: '备份失败：' + error.message }
+    }
+  })
+  route('/backup/restore', async (req) => {
+    const body = await readBody(req)
+    const name = String(body.name || '')
+    const bundle = readAuto(name)
+    if (!bundle) return { ok: false, message: '读不到这个备份（可能已经删了）' }
+    const r = applyBundle(bundle, body.parts)
+    if (r.applied.some((a) => a.id === 'config')) {
+      setConfig(loadConfig())
+      await mods.sync().catch(() => {})
+    }
+    const n = r.applied.reduce((s0, a) => s0 + a.files, 0)
+    return { ok: true, ...r, message: `从 ${name} 恢复了 ${r.applied.length} 项、${n} 个文件` + (r.applied.some((a) => a.id === 'config') ? '；配置已生效' : '') }
+  })
+  route('/backup/delete', async (req) => {
+    const body = await readBody(req)
+    const ok = deleteAuto(String(body.name || ''))
+    return { ok, ...backupState(), message: ok ? '删了' : '没删成' }
+  })
+
+  // ---------- 连接自检 ----------
+  route('/connect/selfcheck', async () => {
+    const inst = snowluma.detect()
+    const checks = []
+    const add = (id, label, ok, detail, hint, level) => checks.push({ id, label, ok: Boolean(ok), detail: detail || '', hint: ok ? '' : hint || '', level: level || (ok ? 'ok' : 'err') })
+    add('switch', '总开关', cfg.enabled, cfg.enabled ? '开着' : '关着，她不会收发任何消息', '在概览右上角打开总开关')
+    add('dry', '试运行', !cfg.dryRun, cfg.dryRun ? '开着：只写日志，不真发' : '关着：会真的发到 QQ', '', cfg.dryRun ? 'warn' : 'ok')
+    if (cfg.gateway === 'onebot') {
+      add('gw', '外部 OneBot 网关', onebotState === 'connected', '当前：' + onebotState, '看看 OneBot 服务在不在跑、地址和 token 对不对')
+      add('endpoint', 'WebSocket 地址', Boolean(cfg.snowluma.wsUrl), cfg.snowluma.wsUrl || '没填', '在「连接」页填上正向 WebSocket 地址')
+    } else {
+      add('sl-install', 'SnowLuma 安装', inst.installed, inst.installed ? 'v' + inst.version : inst.reason || '没找到', '在「连接」页填 SnowLuma 目录（解压后能看到 index.mjs 的那层）')
+      const running = await snowluma.running().catch(() => false)
+      add('sl-run', 'SnowLuma 运行', running, running ? '在跑' : '没在跑', '点「启动」')
+      if (running) {
+        const ag = await snowluma.agreements().catch(() => null)
+        add('sl-consent', 'SnowLuma 用户协议', ag && !ag.consentRequired, ag ? (ag.consentRequired ? '还没同意' : '已同意') : '读不到协议状态', '在「连接」页读一遍并同意')
+      }
+    }
+    add('conn', 'QQ 连接', onebotState === 'connected', '当前：' + onebotState, '点「重新连接」；还不行就看网关日志')
+    if (onebotState === 'connected') {
+      let info = null
+      try { info = await onebot.call('get_login_info', {}, { timeoutMs: 5000 }) } catch (error) {}
+      const same = info && String(info.user_id) === String(cfg.botQQ)
+      add('login', '登录的是机器人号', same, info ? `${info.user_id}（${info.nickname || '没昵称'}）` : '读不到登录信息', '确认网关登录的是 ' + (cfg.botQQ || '机器人号'))
+    }
+    const last = hub.lastChatAt
+    const mins = last ? Math.round((Date.now() - last) / 60000) : -1
+    add('recv', '最近收到消息', last > 0, last ? `${mins} 分钟前（${new Date(last).toLocaleString()}）` : '还没收到过', '在 QQ 上给机器人号发一句话试试', last > 0 && mins > 360 ? 'warn' : undefined)
+    add('botqq', '机器人 QQ 号', Boolean(cfg.botQQ), cfg.botQQ || '没填', '在「连接」页填机器人号')
+    const fail = checks.filter((c) => !c.ok && c.level === 'err').length
+    const warn = checks.filter((c) => c.level === 'warn').length
+    return { ok: true, checks, fail, warn, at: Date.now(), summary: fail ? `${fail} 项要处理` : warn ? '能跑，但有几项要留意' : '全部正常' }
+  })
+
+  // 自动备份：每 10 分钟看一次该不该备（间隔按配置；上次备份时间就用最新那份的文件时间）
+  ctx.effect(() => ctx.interval(safe(async () => {
+    if (!cfg.backup.auto) return
+    const last = listAuto()[0]
+    if (last && Date.now() - last.at < Math.max(1, cfg.backup.everyHours) * 3600_000) return
+    await runAutoBackup('定时')
+  }, '自动备份'), 10 * 60_000), 'halobot: 自动备份')
 
   // SnowLuma
   route('/snowluma/start', async () => snowluma.start())

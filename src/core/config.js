@@ -42,6 +42,18 @@ export const DEFAULTS = {
   model: { provider: '', model: '', reasoningEffort: 'low', vision: 'auto' }, // 留空 = 跟随 DSH 默认；vision: auto/on/off
   // 按聊天选模型（主人在面板「模型」页设）：私聊 QQ 号 > 群号 > 所有私聊 / 所有群默认 > 上面的全局模型；没写的一级退到下一级
   chatModels: { privateDefault: { provider: '', model: '', reasoningEffort: '' }, groupDefault: { provider: '', model: '', reasoningEffort: '' }, privates: {}, groups: {} },
+  // 模型用量的估算单价（元 / 百万 token），分高峰 / 空闲两套。DSH 不提供价目表，这里填了概览卡才会算「今天大概花了多少」；
+  // 两套都是 0 就只报 token、不算钱。miss = 输入没命中缓存，hit = 输入命中缓存（缓存写也按这个价），out = 输出。
+  // 默认值 = DeepSeek 官方价目：高峰 2 / 0.04 / 8，空闲 1 / 0.02 / 4。
+  // holidays / workdays 是补丁：官方调休补班的周末写进 workdays 才会按高峰算，跨年新放的假写进 holidays。
+  usage: {
+    prices: {
+      peak: { miss: 2, hit: 0.04, out: 8 },
+      idle: { miss: 1, hit: 0.02, out: 4 },
+    },
+    holidays: [],
+    workdays: [],
+  },
   merge: { enabled: true, waitSec: 2.5, maxSec: 8, groupWaitSec: 5, groupMaxSec: 15 }, // 连发合并：对方停顿 waitSec 秒再一起回，最多等 maxSec 秒；群里等得久一点，把一段话攒齐
   imageGen: {
     enabled: false,
@@ -102,11 +114,14 @@ export const DEFAULTS = {
     windowEnd: '23:30',
     minGapMinutes: 180,
     attachImage: true, // 写日记时配一张图（优先今天她画的，其次今天收的表情包）
+    useChatLog: false, // 写日记要不要参考当天聊过的事；关着 = 完全不看聊天记录，她自己想写什么写什么
     minChars: 60,
     maxChars: 140,
     visibility: 'all', // all | friends | selected | self | excluded，和 QQ 空间自身的可见范围一致
     audienceQQs: '', // selected / excluded 时可见（或不可见）的好友 QQ 号，换行或逗号分隔
   },
+  // 自动备份：开着就按间隔把数据目录打包到 backups/，只留最近 keep 份（手动导出导入也还在）
+  backup: { auto: false, everyHours: 24, keep: 7 },
   // 本地接口：数据目录 local/ 里的脚本接管这几项（文件要在、开关要开）
   local: { tts: false, image: false, song: false, asr: false },
   bili: {
@@ -259,6 +274,25 @@ export function normalize(raw) {
   c.ownerLevel = LEVELS.includes(c.ownerLevel) ? c.ownerLevel : 'full'
   c.longTasks = bool(c.longTasks, false)
   c.chatModels = normalizeChatModels(c.chatModels)
+  // 用量单价：元 / 百万 token，别让面板填进来的怪值把花费算成 NaN 或负数
+  if (!isObj(c.usage)) c.usage = { prices: {} }
+  const priceRow = (x) => ({
+    miss: num(x?.miss, 0, 0, 10_000),
+    hit: num(x?.hit, 0, 0, 10_000),
+    out: num(x?.out, 0, 0, 10_000),
+  })
+  // 老配置是平铺的 { miss, hit, out }（没有高峰/空闲之分），读的时候两套都填同一个价。
+  // 注意要看 raw 而不是合并后的值——deepMerge 会把平铺的键塞进默认值里，靠合并结果分不出来。
+  const rawPrices = isObj(raw?.usage?.prices) ? raw.usage.prices : {}
+  const flat = !isObj(rawPrices.peak) && !isObj(rawPrices.idle) && ('miss' in rawPrices || 'hit' in rawPrices || 'out' in rawPrices)
+  const merged = isObj(c.usage.prices) ? c.usage.prices : {}
+  c.usage.prices = flat
+    ? { peak: priceRow(rawPrices), idle: priceRow(rawPrices) }
+    : { peak: priceRow(merged.peak), idle: priceRow(merged.idle) }
+  // 日期补丁：'YYYY-MM-DD' 的数组，写错格式的项直接丢掉
+  const days = (list) => (Array.isArray(list) ? list.map((x) => String(x || '').trim()).filter((x) => /^\d{4}-\d{2}-\d{2}$/.test(x)) : [])
+  c.usage.holidays = days(c.usage.holidays)
+  c.usage.workdays = days(c.usage.workdays)
   c.profilePerms = Object.fromEntries(PROFILE_PERM_KEYS.map((k) => [k, PROFILE_PERM_LEVELS.includes(c.profilePerms?.[k]) ? c.profilePerms[k] : profilePermDefault(k)]))
   // 旧版 douyinDm 是「回别人私信」的权限，含义已不同（现在是主动发私信），老配置一律回到默认「仅主人」
   if (isObj(raw?.profilePerms) && 'douyinDm' in raw.profilePerms) c.profilePerms.douyinDm = profilePermDefault('douyinDm')
@@ -301,10 +335,16 @@ export function normalize(raw) {
   c.diary.windowEnd = hhmm(c.diary.windowEnd, '23:30')
   c.diary.minGapMinutes = num(c.diary.minGapMinutes, 180, 0, 1440)
   c.diary.attachImage = bool(c.diary.attachImage, true)
+  c.diary.useChatLog = bool(c.diary.useChatLog, false)
   c.diary.minChars = num(c.diary.minChars, 60, 10, 500)
   c.diary.maxChars = num(c.diary.maxChars, 140, 20, 1000)
   c.diary.visibility = DIARY_AUDIENCES.includes(c.diary.visibility) ? c.diary.visibility : 'all'
   c.diary.audienceQQs = qqList(c.diary.audienceQQs).slice(0, 200).join('\n')
+  // 自动备份：别让面板填个 0 小时把宿主刷死（最短 1 小时），份数封顶 60
+  if (!isObj(c.backup)) c.backup = { auto: false, everyHours: 24, keep: 7 }
+  c.backup.auto = bool(c.backup.auto, false)
+  c.backup.everyHours = num(c.backup.everyHours, 24, 1, 720)
+  c.backup.keep = num(c.backup.keep, 7, 1, 60)
   c.speakUp.idleMinutes = num(c.speakUp.idleMinutes, 40, 5, 1440)
   c.speakUp.nudge = bool(c.speakUp.nudge, true)
   c.speakUp.minIntervalMinutes = num(c.speakUp.minIntervalMinutes, 90, 5, 1440)

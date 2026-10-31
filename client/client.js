@@ -109,6 +109,10 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-deep:#9cc4f5;--ab-sea:#6
 .ab-stat{padding:14px 16px}
 .ab-stat .n{font-size:24px;font-weight:650;color:var(--ab-deep);font-variant-numeric:tabular-nums}
 .ab-stat .l{color:var(--ab-sub);font-size:12px}
+/* 概览「今天」那一条小指标：不用卡片，一行紧凑排开 */
+.ab-metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:10px 12px}
+.ab-metric .n{font-size:20px;font-weight:650;line-height:1.35;color:var(--ab-deep);font-variant-numeric:tabular-nums}
+.ab-metric .l{color:var(--ab-sub);font-size:12px}
 .ab-row{display:flex;align-items:flex-start;gap:16px;padding:10px 0;border-top:1px solid var(--ab-line)}
 .ab-row:first-of-type{border-top:0}
 .ab-row .ab-label{flex:0 0 180px;padding-top:5px}
@@ -504,10 +508,12 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     // ---------------- 标签页 ----------------
     const TABS = [
       { id: 'overview', label: '概览' },
+      { id: 'stats', label: '统计' },
       { id: 'connect', label: '连接' },
       { id: 'persona', label: '人格' },
       { id: 'access', label: '权限' },
       { id: 'group', label: '聊天', flag: 'group' },
+      { id: 'sessions', label: '会话' },
       { id: 'model', label: '模型' },
       { id: 'voice', label: '语音', flag: 'voice.enabled' },
       { id: 'stickers', label: '表情包', flag: 'stickers.enabled' },
@@ -532,8 +538,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     // 两层导航：上面一排是分组，下面一排是这组里的页面；每组记住上次看的那页，Alt+K 查找功能
     // （分组导航的思路来自社区贡献的「导航布局」扩展，这里改成面板自己实现）
     const NAV_GROUPS = [
-      { id: 'home', label: '概览', icon: 'M3 10.5 12 3l9 7.5M5.5 9v11.5h13V9M10 20.5v-6h4v6', tabs: ['overview'] },
-      { id: 'self', label: '人设', icon: 'M12 12.5a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5zM4.5 20.5c.9-3.6 3.9-5.5 7.5-5.5s6.6 1.9 7.5 5.5', tabs: ['persona', 'group', 'speakup', 'mood', 'memory'] },
+      { id: 'home', label: '概览', icon: 'M3 10.5 12 3l9 7.5M5.5 9v11.5h13V9M10 20.5v-6h4v6', tabs: ['overview', 'stats'] },
+      { id: 'self', label: '人设', icon: 'M12 12.5a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5zM4.5 20.5c.9-3.6 3.9-5.5 7.5-5.5s6.6 1.9 7.5 5.5', tabs: ['persona', 'group', 'sessions', 'speakup', 'mood', 'memory'] },
       { id: 'express', label: '表达', icon: 'M20.5 11.5a8 8 0 0 1-11.7 7.1L4 20l1.4-4.4A8 8 0 1 1 20.5 11.5zM9 13.2s1.1 1.5 3 1.5 3-1.5 3-1.5M9.5 9.6h.01M14.5 9.6h.01', tabs: ['voice', 'stickers', 'imagegen', 'song'] },
       { id: 'platform', label: '平台', icon: 'M3.5 6.5h17v11h-17zM10.5 9.8v4.4l3.8-2.2z', tabs: ['diary', 'bili', 'douyin', 'heybox'] },
       { id: 'system', label: '系统', icon: 'M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1M15 5v4M9 10v4M17 15v4', tabs: ['connect', 'model', 'access', 'local', 'modules', 'backup', 'logs'] },
@@ -543,7 +549,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     const navGroupOf = (t) => NAV_GROUPS.find((g) => g.tabs.includes(t.id)) || (t.ext && PLATFORM_EXT.test(t.label) ? NAV_GROUPS[3] : NAV_GROUPS[4])
     const navOrder = (g, t) => { const i = g.tabs.indexOf(t.id); return i >= 0 ? i : g.tabs.length - (g.tabs.includes('logs') ? 1.5 : 0) }
     const NAV_ALIAS = {
-      overview: '首页 状态', connect: 'qq 网关 snowluma onebot 登录 工作区', persona: '人设 性格 设定 头像', access: '主人 白名单 权限 群管 改资料',
+      overview: '首页 状态', stats: '统计 趋势 报表 用量 消息量 每天 30天', sessions: '会话 对话 聊天记录 重置 管理员', connect: 'qq 网关 snowluma onebot 登录 工作区', persona: '人设 性格 设定 头像', access: '主人 白名单 权限 群管 改资料',
       group: '群聊 插话 合并', model: 'ai 大模型 视觉 思考强度', voice: '语音 tts 说话 音色 edge', stickers: '表情 小黄脸 gif 商城表情',
       imagegen: '画图 图片', diary: '空间 说说 日记', speakup: '搭话 主动', mood: '心情 情绪 状态 好坏', memory: '记忆 回忆 长期记忆 卡片墙 相处经验 说话方式 档案 整理', song: '唱歌 翻唱 rvc 点歌',
       bili: 'b站 bilibili 视频', douyin: '抖音 短视频 私信', local: '本地 接口 sd sovits', modules: '扩展 模块 插件', backup: '备份 导出 导入 迁移 搬家 换设备 数据 zip', logs: '日志 报错',
@@ -665,10 +671,18 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         !cfg.enabled ? h('div', { className: 'ab-note warn' }, '总开关是关着的：哈洛现在不会收也不会发任何 QQ 消息。准备好了就在右上角打开。') : null,
         cfg.enabled && cfg.dryRun ? h('div', { className: 'ab-note' }, '现在是试运行：她会照常思考回复，但只写进日志，不会真的发到 QQ。确认没问题后在右上角关掉「试运行」。') : null,
         cfg.enabled && !conn ? h('div', { className: 'ab-note err' }, '还没连上 QQ 网关' + (st.onebot.problem ? '：' + st.onebot.problem + '。' : '。去「连接」标签看看 SnowLuma 有没有装好、启动没有。') + ' ', h('a', { href: '#', onClick: (e) => { e.preventDefault(); go('connect') } }, '去连接 →')) : null,
-        h('div', { className: 'ab-grid ab-g4' },
-          [['今天收到', s.received, '📥'], ['今天发出', s.sent, '📤'], ['语音条', s.voice, '🎙️'], ['表情包', s.stickers, '😺'],
-            ['生图', s.image, '🎨'], ['翻唱', s.song, '🎤'], ['语音识别', s.asr, '📝']].map(([l, n, ic]) => h('div', { key: l, className: 'ab-card ab-stat' }, h('span', { className: 'ic', 'aria-hidden': true }, ic), h('div', { className: 'n' }, n || 0), h('div', { className: 'l' }, l))),
+        h('div', { className: 'ab-pills', style: { marginTop: 0 } },
+          h('span', { className: 'ab-pill' }, h('i', { className: 'ab-dot ' + (cfg.enabled ? 'ok' : 'err') }), cfg.enabled ? '运行中' : '已关闭'),
+          h('span', { className: 'ab-pill' }, h('i', { className: 'ab-dot ' + (cfg.dryRun ? 'warn' : 'ok') }), cfg.dryRun ? '试运行（不发消息）' : '真实发送'),
+          h('span', { className: 'ab-pill' }, h('i', { className: 'ab-dot ' + (conn ? 'ok' : 'err') }), conn ? 'QQ 已连接' : 'QQ 未连接'),
+          h('span', { className: 'ab-pill' }, '人格 · ' + ((st.personas.find((x) => x.id === cfg.persona.current) || {}).name || cfg.persona.current)),
         ),
+        h(Card, { title: '今天', desc: '收到、发出和各项能力的当日计数，每天 0 点清零。' },
+          h('div', { className: 'ab-metrics' },
+            [['收到', s.received], ['发出', s.sent], ['语音条', s.voice], ['表情包', s.stickers], ['生图', s.image], ['翻唱', s.song], ['语音识别', s.asr]]
+              .map(([l, n]) => h('div', { key: l, className: 'ab-metric' }, h('div', { className: 'n' }, n || 0), h('div', { className: 'l' }, l)))),
+        ),
+        h(UsageCard, { st }),
         h('div', { className: 'ab-grid ab-g2' },
           h(Card, { title: '她现在', desc: '心情会随聊天起伏，过一阵子慢慢回到平常。' },
             h('div', { className: 'ab-flex', style: { marginBottom: 8 } }, h('b', null, st.mood.label), h('span', { className: 'ab-muted' }, st.mood.value + ' / 100')),
@@ -695,11 +709,83 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       )
     }
 
+    /**
+     * 概览上的「模型用量」卡：今天到底烧了多少 token、缓存命中多少、按分时段单价大概多少钱。
+     * 数字来自 host /state 的 usage：QQ 会话的 tokenUsage 增量 + 面板后台任务自己报的 usage，
+     * 按采样那一刻是高峰还是空闲分别记，所以能看出高峰时段占了多少。
+     */
+    function UsageCard({ st }) {
+      const u = st.usage
+      if (!u || u.ok === false) return null
+      const n = (v) => { const x = Number(v); return Number.isFinite(x) ? x : 0 }
+      const tok = (v) => {
+        const x = n(v)
+        if (x >= 1e8) return (x / 1e8).toFixed(2) + ' 亿'
+        if (x >= 1e4) return (x / 1e4).toFixed(1) + ' 万'
+        return String(Math.round(x))
+      }
+      const yuan = (v) => {
+        if (v === null || v === undefined) return '—'
+        const txt = v.toFixed(Math.abs(v) >= 1 ? 2 : 3).replace(/0+$/, '').replace(/\.$/, '')
+        return '¥' + (txt === '' ? '0' : txt)
+      }
+      const t = u.total || {}
+      const per = u.periods || {}
+      const peak = per.peak || {}
+      const idle = per.idle || {}
+      const hit = typeof u.cacheHit === 'number' ? (u.cacheHit * 100).toFixed(1) + '%' : '—'
+      const isPeakNow = u.now === 'peak'
+      const nowText = (isPeakNow ? '高峰时段' : '空闲时段') + (u.nowUntil ? ' · 到 ' + u.nowUntil : '')
+      const cells = [
+        ['输入（未命中）', tok(t.uncachedInputTokens), '按未命中单价'],
+        ['缓存命中', tok(t.cacheReadTokens), '按命中单价，便宜很多'],
+        ['输出', tok(t.outputTokens), '她写出来的部分'],
+        ['缓存命中率', hit, '命中 ÷ 计费输入'],
+      ]
+      const hist = (u.history || []).slice(-7)
+      const peakMax = Math.max(1, ...hist.map((b) => n(b.tokens)))
+      return h(Card, {
+        title: '模型用量 · 今天',
+        desc: 'QQ 会话的真实 token 用量（含面板后台任务），按高峰 / 空闲分时段计价；数字每天 0 点清零，历史留着画趋势。',
+        right: h('div', { className: 'ab-flex', style: { gap: 8 } },
+          h('span', { className: 'ab-pill' }, h('i', { className: 'ab-dot ' + (isPeakNow ? 'warn' : 'ok') }), nowText),
+          h('span', { className: 'ab-muted ab-small' }, u.day || '')),
+      },
+        h('div', { className: 'ab-grid ab-g4' },
+          cells.map(([l, v, sub]) => h('div', { key: l, style: { padding: '6px 0' } },
+            h('div', { className: 'ab-muted ab-small' }, l),
+            h('div', { style: { fontSize: 21, fontWeight: 650, lineHeight: 1.5, fontVariantNumeric: 'tabular-nums' } }, v),
+            h('div', { className: 'ab-muted ab-small' }, sub)))),
+        h('div', { className: 'ab-flex', style: { marginTop: 4, gap: 14, flexWrap: 'wrap' } },
+          h('span', { className: 'ab-small' }, '估算花费 ', h('b', null, u.priced ? yuan(u.cost) : '—'),
+            u.priced ? null : h('span', { className: 'ab-muted' }, '（在「模型」页填单价后显示）')),
+          h('span', { className: 'ab-muted ab-small' }, '合计 ' + tok(t.uncachedInputTokens) + ' 未命中 + ' + tok(t.cacheReadTokens) + ' 命中 + ' + tok(t.outputTokens) + ' 输出'),
+          u.calls ? h('span', { className: 'ab-muted ab-small' }, '后台调用 ' + u.calls + ' 次') : null,
+          u.sessions ? h('span', { className: 'ab-muted ab-small' }, u.sessions + ' 条会话') : null),
+        h('div', { className: 'ab-kv', style: { marginTop: 12 } },
+          h('span', null, '高峰时段'), h('span', null, tok(peak.tokens) + ' token' + (peak.cost === null || peak.cost === undefined ? '' : ' · ' + yuan(peak.cost))),
+          h('span', null, '空闲时段'), h('span', null, tok(idle.tokens) + ' token' + (idle.cost === null || idle.cost === undefined ? '' : ' · ' + yuan(idle.cost))),
+        ),
+        hist.length > 1 ? h('div', null,
+          h('div', { className: 'ab-muted ab-small', style: { marginTop: 14 } }, '近 7 天 · 深色是高峰时段，浅色是空闲时段'),
+          h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 6, height: 56, marginTop: 6 } },
+            hist.map((b) => {
+              const tot = n(b.tokens)
+              const pk = Math.min(tot, n(b.peak))
+              return h('div', { key: b.day, title: b.day + '：' + tok(tot) + ' token，其中高峰 ' + tok(pk), style: { flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 4, height: '100%' } },
+                h('i', { style: { display: 'block', width: '100%', maxWidth: 28, borderRadius: '3px 3px 0 0', background: 'var(--ab-sea)', opacity: 0.28, height: Math.round(30 * Math.max(0, tot - pk) / peakMax) + 'px' } }),
+                h('i', { style: { display: 'block', width: '100%', maxWidth: 28, borderRadius: '0 0 3px 3px', background: 'var(--ab-sea)', opacity: b.day === u.day ? 1 : 0.62, height: Math.max(pk > 0 ? 2 : 0, Math.round(30 * pk / peakMax)) + 'px' } }),
+                h('span', { className: 'ab-muted', style: { fontSize: 10, lineHeight: 1 } }, String(b.day).slice(5)))
+            }),
+          )) : null,
+      )
+    }
+
     function RecentLogs({ go }) {
       const [items, setItems] = useState(null)
       useEffect(() => {
         let alive = true
-        const load = () => get('/logs?limit=8&level=info').then((r) => alive && setItems(r.entries || []))
+        const load = () => { if (document.hidden) return; get('/logs?limit=8&level=info').then((r) => alive && setItems(r.entries || [])) }
         load()
         const t = setInterval(load, 5000)
         return () => { alive = false; clearInterval(t) }
@@ -780,6 +866,42 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(Row, { label: 'HTTP 令牌' }, f.text('snowluma.httpToken', { type: 'password', placeholder: draft.snowluma.httpTokenSet ? '已保存' : '没有就留空' })))
     }
 
+    /** 一键自检：开关、网关、登录号、最近收消息……哪一环断了直接说。 */
+    function SelfCheck({ toast }) {
+      const [data, setData] = useState(null)
+      const [busy, setBusy] = useState(false)
+      const run = async () => {
+        setBusy(true)
+        try {
+          const r = await get('/connect/selfcheck')
+          if (r.ok) setData(r)
+          else { setData({ ok: false, checks: [], at: Date.now(), summary: '自检没跑成', error: r.message || '未知错误' }); toast(r.message || '自检没跑成', 'err') }
+        } catch (error) {
+          setData({ ok: false, checks: [], at: Date.now(), summary: '自检没跑成', error: error.message || String(error) })
+          toast(error.message || '自检没跑成', 'err')
+        }
+        setBusy(false)
+      }
+      useEffect(() => { run() }, [])
+      const checks = (data && data.checks) || []
+      const rows = checks.map((c) => h('div', { key: c.id, className: 'ab-row', style: { alignItems: 'flex-start', padding: '7px 0', borderTop: '1px solid var(--ab-line)' } },
+        h('i', { className: cx('ab-dot', c.ok ? 'ok' : c.level === 'warn' ? 'warn' : 'err'), style: { marginTop: 5 } }),
+        h('div', { style: { flex: 1 } },
+          h('b', null, c.label),
+          h('span', { className: 'ab-muted ab-small' }, '　' + c.detail),
+          c.hint ? h('div', { className: 'ab-small', style: { color: 'var(--ab-warn)' } }, '→ ' + c.hint) : null)))
+      return h(Card, {
+        title: '自检',
+        desc: '点一下，把「能不能连上 QQ」的每一环都过一遍：开关、网关、登录号、最近有没有收到消息。',
+        right: h('div', { className: 'ab-flex' },
+          data ? h('span', { className: 'ab-muted ab-small' }, data.summary) : null,
+          h(Btn, { small: true, kind: 'primary', disabled: busy, onClick: run }, busy ? '检查中…' : '重新自检')),
+      }, !data ? h(Empty, { icon: '⏳', text: '正在检查…' })
+        : data.error ? h(Empty, { icon: '⚠️', text: '自检没跑成：' + data.error })
+        : h('div', null, rows,
+          h('div', { className: 'ab-muted ab-small', style: { marginTop: 8 } }, '检查时间：' + new Date(data.at || Date.now()).toLocaleTimeString())))
+    }
+
     function Connect({ st, draft, setDraft, toast, reload, openWizard }) {
       const f = useField(draft, setDraft)
       const sl = st.snowluma
@@ -793,6 +915,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(Btn, { small: true, onClick: async () => { const r = await get('/onebot/test'); toast(r.message) } }, '测试连接'),
         h(Btn, { small: true, onClick: async () => { const r = await post('/onebot/reconnect'); toast(r.message, r.ok ? 'ok' : 'err'); reload() } }, '重新连接'))
       return h('div', { className: 'ab-grid' },
+        h(SelfCheck, { toast }),
         h(Card, { title: '用什么接 QQ', right: openWizard ? h(Btn, { small: true, kind: 'ghost', onClick: openWizard }, '重新走一遍设置向导') : null }, h(GatewayChoice, { draft, setDraft })),
         external ? h(Card, { title: '接上 QQ（已有的 OneBot 机器人）', desc: '让你的 OneBot 服务登录机器人号 ' + (draft.botQQ || '') + '，把它的正向 WebSocket 地址填在这里，保存后插件就会去连。插件只连接，不会启动或注入任何东西；连上后会先核对登录的是不是机器人号，不是就断开。' },
           h(OneBotFields, { draft, f }),
@@ -1269,6 +1392,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     }
 
     function Model({ draft, setDraft, toast }) {
+      const f = useField(draft, setDraft)
       const [list, setList] = useState(null)
       const [ping, setPing] = useState({})
       useEffect(() => { get('/models').then((r) => setList(r.list || [])) }, [])
@@ -1317,6 +1441,17 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               h('td', null, m.name), h('td', { className: 'ab-muted' }, m.provider),
               h('td', null, ping[key(m)] || ''),
               h('td', { style: { textAlign: 'right' } }, h(Btn, { small: true, kind: 'ghost', onClick: () => test(m) }, '测速'), h(Btn, { small: true, kind: 'ghost', onClick: () => { setDraft(setPath(setPath(draft, 'model.provider', m.provider), 'model.model', m.model)); toast('选好了，记得保存') } }, '用这个')))))),
+        ),
+        h(Card, { title: 'Token 单价（算花费）', desc: 'DSH 本身没有价目表，概览卡里的「估算花费」要在这里填了单价才会算。按模型官网的「元 / 百万 token」填；留 0 就只显示 token、不显示钱。' },
+          h('div', { className: 'ab-small', style: { margin: '12px 0 2px', fontWeight: 600 } }, '高峰时段（周一至周五 9:00–12:00、14:00–18:00，北京时间）'),
+          h(Row, { label: '输入（没命中缓存）', hint: '通常是最贵的一档' }, f.num('usage.prices.peak.miss', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
+          h(Row, { label: '输入（命中缓存）', hint: '命中缓存的输入单价，一般便宜一个数量级' }, f.num('usage.prices.peak.hit', { min: 0, step: 0.001 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
+          h(Row, { label: '输出' }, f.num('usage.prices.peak.out', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
+          h('div', { className: 'ab-small', style: { margin: '16px 0 2px', fontWeight: 600 } }, '空闲时段（其余时间，含周末与法定节假日全天）'),
+          h(Row, { label: '输入（没命中缓存）' }, f.num('usage.prices.idle.miss', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
+          h(Row, { label: '输入（命中缓存）' }, f.num('usage.prices.idle.hit', { min: 0, step: 0.001 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
+          h(Row, { label: '输出' }, f.num('usage.prices.idle.out', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
+          h('div', { className: 'ab-muted ab-small' }, '默认值就是 DeepSeek 官方价目（高峰 2 / 0.04 / 8，空闲 1 / 0.02 / 4），按官网调整即可。填好保存后，概览卡按采样那一刻的时段分别计价；周末和法定节假日全天按空闲算，官方调休补班的周末也默认按空闲算（想按高峰算可在配置 usage.workdays 里补日期）。'),
         ),
       )
     }
@@ -1530,11 +1665,12 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const social = modOn(st, 'qzone-social') ? h(QzoneSocial, { draft, setDraft, toast }) : h(ModOff, { name: '空间互动' })
       if (!on) return h('div', { className: 'ab-grid' }, h(ModOff, { name: '空间日记' }), social)
       return h('div', { className: 'ab-grid' },
-        h(Card, { title: '空间日记', right: f.sw('diary.enabled'), desc: '她每天会在 QQ 空间发几条说说，结合当天聊过的事，用自己的口吻写。写日记那一轮不会发到聊天里。' },
+        h(Card, { title: '空间日记', right: f.sw('diary.enabled'), desc: '她每天会在 QQ 空间发几条说说，用自己的口吻写。写日记那一轮不会发到聊天里。' },
           h(Row, { label: '每天写几次' }, f.num('diary.timesPerDay', { min: 0, max: 6 })),
           h(Row, { label: '时间段', hint: '在这段时间里随机挑时间' }, f.text('diary.windowStart', { size: 'sm' }), h('span', { className: 'ab-muted' }, '到'), f.text('diary.windowEnd', { size: 'sm' })),
           h(Row, { label: '两篇至少隔' }, f.num('diary.minGapMinutes', { min: 0 }), h('span', { className: 'ab-muted' }, '分钟')),
           h(Row, { label: '字数' }, f.num('diary.minChars', { min: 10 }), h('span', { className: 'ab-muted' }, '到'), f.num('diary.maxChars', { min: 20 }), h('span', { className: 'ab-muted' }, '字')),
+          h(Row, { label: '参考当天聊天', hint: '开着：写说说时会看当天在 QQ 上聊过的事；关着：完全不看聊天记录，想到什么写什么（默认关，说说更像她自己发的）' }, f.sw('diary.useChatLog')),
           h(Row, { label: '日记配图', hint: '开着时每篇会从「今天她画的图 / 今天收的表情包」里挑一张配上去；没有合适的就只发文字' }, f.sw('diary.attachImage')),
           h(DiaryAudience, { draft, setDraft, toast }),
         ),
@@ -2846,20 +2982,182 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       )
     }
 
+    // ---------------- 统计 ----------------
+    /** token 说人话：1.2 万 / 3.4 亿。 */
+    const fmtTok = (n) => {
+      const v = Number(n) || 0
+      return v >= 1e8 ? (v / 1e8).toFixed(2) + ' 亿' : v >= 1e4 ? (v / 1e4).toFixed(1) + ' 万' : String(Math.round(v))
+    }
+    const dayShort = (d) => String(d || '').slice(5)
+    /** 这条 QQ 会话是什么类型。 */
+    const chatKind = (c) => {
+      const id = String(c.chatId || '')
+      return id.startsWith('system:') ? '系统' : id.startsWith('group:') ? '群聊' : '私聊'
+    }
+
+    function Stats() {
+      const [days, setDays] = useState(7)
+      const [data, setData] = useState(null)
+      useEffect(() => { get('/stats?days=' + days).then((r) => setData(r.ok ? r : { error: r.message || '读不到统计数据' })) }, [days])
+      const rows = (data && data.days) || []
+      const peak = Math.max(1, ...rows.map((d) => Math.max(d.received || 0, d.sent || 0)))
+      const totals = (data && data.totals) || {}
+      const chats = (data && data.chats) || []
+      const many = rows.length > 10
+      const bar = (v, strong) => h('div', {
+        style: { flex: '1 1 0', minWidth: 2, maxWidth: many ? 6 : 9, height: Math.max(2, Math.round(92 * (v || 0) / peak)), borderRadius: 2, background: 'var(--ab-sea)', opacity: strong ? 1 : 0.4 },
+      })
+      return h('div', { className: 'ab-grid' },
+        h(Card, { title: '消息统计', desc: '按自然日（本机时区）记收到、发出多少条。数据在数据目录的 stats.json，最多留 30 天。',
+          right: h(Seg, { value: String(days), onChange: (v) => setDays(Number(v)), options: [{ value: '7', label: '近 7 天' }, { value: '30', label: '近 30 天' }] }) },
+          !data ? h(Empty, { icon: '⏳', text: '加载中…' }) : data.error ? h(Empty, { text: data.error }) : h('div', null,
+            h('div', { className: 'ab-metrics', style: { marginBottom: 14 } },
+              h('div', { className: 'ab-metric' }, h('div', { className: 'n' }, String(totals.received || 0)), h('div', { className: 'l' }, '收到')),
+              h('div', { className: 'ab-metric' }, h('div', { className: 'n' }, String(totals.sent || 0)), h('div', { className: 'l' }, '发出')),
+              h('div', { className: 'ab-metric' }, h('div', { className: 'n' }, String(data.active || 0)), h('div', { className: 'l' }, '有消息的天')),
+              h('div', { className: 'ab-metric' }, h('div', { className: 'n' }, String(totals.stickers || 0)), h('div', { className: 'l' }, '表情'))),
+            h('div', { style: { display: 'flex', alignItems: 'flex-end', gap: many ? 2 : 7, height: 120, width: '100%', overflow: 'hidden' } },
+              rows.map((d, i) => h('div', { key: d.day, style: { flex: '1 1 0', minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', gap: 4 }, title: `${d.day}：收到 ${d.received} · 发出 ${d.sent} · 出错 ${d.errors}` },
+                h('div', { style: { display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 2, height: 92, width: '100%' } }, bar(d.received, true), bar(d.sent, false)),
+                h('div', { className: 'ab-muted', style: { fontSize: 10, lineHeight: '10px', whiteSpace: 'nowrap' } }, many && i % 5 !== 0 && i !== rows.length - 1 ? '' : dayShort(d.day))))),
+            h('div', { className: 'ab-muted ab-small', style: { marginTop: 6 } },
+              h('i', { className: 'ab-dot ok', style: { background: 'var(--ab-sea)' } }), ' 收到  ',
+              h('i', { className: 'ab-dot', style: { background: 'var(--ab-sea)', opacity: 0.4 } }), ' 发出'),
+            h('div', { style: { marginTop: 16 } }, rows.slice().reverse().map((d) => h('div', { key: d.day, className: 'ab-row', style: { padding: '5px 0', borderTop: '1px solid var(--ab-line)' } },
+              h('span', { style: { minWidth: 92 } }, d.day),
+              h('span', { className: 'ab-muted ab-small', style: { flex: 1 } }, `收 ${d.received} · 发 ${d.sent}` + (d.stickers ? ` · 表情 ${d.stickers}` : '') + (d.voice ? ` · 语音 ${d.voice}` : '') + (d.asr ? ` · 识别 ${d.asr}` : '') + (d.song ? ` · 翻唱 ${d.song}` : '') + (d.image ? ` · 生图 ${d.image}` : '') + (d.errors ? ` · 出错 ${d.errors}` : ''))))),
+          )),
+        h(Card, { title: '按会话', desc: '今天的收发，加上这条会话至今累计的 token（含缓存部分，所以数字看着大）；还没用过模型的显示 —。' },
+          !data ? h(Empty, { icon: '⏳', text: '加载中…' }) : chats.length === 0 ? h(Empty, { icon: '💬', text: '还没有任何 QQ 会话' }) :
+            h('div', { style: { overflowX: 'auto' } },
+              h('table', { className: 'ab-table' },
+                h('thead', null, h('tr', null, ['会话', '类型', '今天（收 / 发）', '累计 token', '缓存命中', '建于'].map((x) => h('th', { key: x }, x)))),
+                h('tbody', null, chats.map((c) => {
+                  const t = c.tokens
+                  const billed = t ? t.uncached + t.cacheRead + t.cacheWrite : 0
+                  const hit = t && billed > 0 ? Math.round((t.cacheRead / billed) * 100) : null
+                  const today = c.today || {}
+                  return h('tr', { key: c.chatId },
+                    h('td', null,
+                      h('div', { style: { fontWeight: 500 } }, c.title || c.chatId),
+                      h('div', { className: 'ab-muted ab-small' }, c.chatId)),
+                    h('td', { className: 'ab-small' }, chatKind(c)),
+                    h('td', { className: 'ab-small' }, `${today.received || 0} / ${today.sent || 0}`),
+                    h('td', { className: 'ab-small' }, t ? fmtTok(billed + t.output) : h('span', { className: 'ab-muted' }, '—')),
+                    h('td', { className: 'ab-small' }, hit !== null ? hit + '%' : h('span', { className: 'ab-muted' }, '—')),
+                    h('td', { className: 'ab-small ab-muted' }, c.bornDay || '—'))
+                })))))
+      )
+    }
+
+    // ---------------- 会话管理 ----------------
+    /** 每条 QQ 会话对应的 DSH 会话（重置、归档都在这）。 */
+    function Sessions({ toast, reload }) {
+      const [data, setData] = useState(null)
+      const [busy, setBusy] = useState('')
+      const load = () => get('/sessions/list').then((r) => setData(r.ok ? r : { list: [], error: r.message }))
+      useEffect(() => { load() }, [])
+      const reset = async (c) => {
+        if (!window.confirm(`让「${c.title}」重新开始？\n\n现在的会话会归档（侧栏「归档」里还能找回），下一条消息会开一个新会话。`)) return
+        setBusy(c.chatId)
+        const r = await post('/sessions/reset-one', { chatId: c.chatId })
+        setBusy('')
+        toast(r.message, r.ok ? 'ok' : 'err')
+        if (r.ok) { await load(); reload && reload() }
+      }
+      const copy = async (text) => {
+        try { await navigator.clipboard.writeText(text); toast('复制了：' + text) } catch (e) { toast('复制失败，手动选中吧：' + text) }
+      }
+      const list = (data && data.list) || []
+      const cells = list.map((c) => {
+        const t = c.tokens
+        const billed = t ? t.uncached + t.cacheRead + t.cacheWrite : 0
+        const used = billed + (t ? t.output : 0)
+        const hit = t && billed > 0 ? Math.round((t.cacheRead / billed) * 100) : null
+        const today = c.today || {}
+        const n = (today.received || 0) + (today.sent || 0)
+        return h('tr', { key: c.chatId },
+          h('td', null,
+            h('div', { style: { fontWeight: 500 } }, c.title || c.chatId),
+            h('div', { className: 'ab-muted ab-small' }, c.model ? '模型 ' + String(c.model).split('::').pop() : '跟随默认模型')),
+          h('td', { className: 'ab-small' }, chatKind(c)),
+          h('td', { className: 'ab-small' }, n ? `收 ${today.received || 0} · 发 ${today.sent || 0}` : h('span', { className: 'ab-muted' }, '—')),
+          h('td', { className: 'ab-small' }, t ? fmtTok(used) + (hit !== null ? `（命中 ${hit}%）` : '') : h('span', { className: 'ab-muted' }, '—')),
+          h('td', { className: 'ab-small ab-muted' }, c.bornDay || '—'),
+          h('td', { className: 'ab-small' },
+            h('span', { style: { cursor: 'pointer', borderBottom: '1px dotted var(--ab-line)' }, title: '点一下复制完整会话 ID：' + c.sessionId, onClick: () => copy(c.sessionId) },
+              String(c.sessionId).replace(/^session-/, '').slice(0, 8))),
+          h('td', null, h(Btn, { small: true, disabled: busy === c.chatId, onClick: () => reset(c) }, busy === c.chatId ? '…' : '重新开始')))
+      })
+      const body = !data ? h(Empty, { icon: '⏳', text: '加载中…' })
+        : data.error ? h(Empty, { text: data.error })
+        : list.length === 0 ? h(Empty, { icon: '💬', text: '还没有会话 —— 有人在 QQ 上找她之后，这里会长出来' })
+        : h('div', null,
+          h('div', { style: { overflowX: 'auto' } },
+            h('table', { className: 'ab-table' },
+              h('thead', null, h('tr', null, ['会话', '类型', '今天', '累计 token', '建于', '会话 ID', ''].map((x) => h('th', { key: x }, x)))),
+              h('tbody', null, cells))),
+          h('div', { className: 'ab-small ab-muted', style: { marginTop: 10 } }, '这里只是插件的「QQ 会话」视图；DSH 里手动开的会话不在这里。要全部重来，可以在「概览 → 快捷操作」里一次归档所有 QQ 会话。'))
+      return h('div', { className: 'ab-grid' },
+        h(Card, {
+          title: 'QQ 会话',
+          desc: '每个聊过的私聊 / 群在这里对应一个独立的 DSH 会话，上下文、记忆和模型都是分开的。重新开始只影响这一个聊天。',
+          right: h(Btn, { small: true, kind: 'ghost', onClick: load }, '刷新'),
+        }, body))
+    }
+
     function Logs() {
       const [items, setItems] = useState(null)
+      const [areas, setAreas] = useState([])
+      const [files, setFiles] = useState([])
       const [level, setLevel] = useState('info')
       const [area, setArea] = useState('')
+      const [q, setQ] = useState('')
       const [auto, setAuto] = useState(true)
-      const load = useCallback(() => get('/logs?limit=400&level=' + level + '&area=' + area).then((r) => setItems(r.entries || [])), [level, area])
-      useEffect(() => { load(); if (!auto) return; const t = setInterval(load, 3000); return () => clearInterval(t) }, [load, auto])
-      return h(Card, { title: '日志', desc: '所有后台动作都在这里，令牌和密码已自动打码。完整日志文件在 %USERPROFILE%\\.dsh\\plugins-data\\halobot\\logs\\。',
-        right: h('div', { className: 'ab-flex' },
-          h(Select, { value: level, onChange: setLevel, width: 110, options: [['debug', '全部'], ['info', '一般'], ['warn', '警告'], ['error', '错误']].map(([value, label]) => ({ value, label })) }),
-          h(Select, { value: area, onChange: setArea, width: 130, options: [['', '所有模块'], ['core', '核心'], ['chat', '聊天'], ['onebot', 'QQ 网关'], ['snowluma', 'SnowLuma'], ['sticker', '表情'], ['qzone', '空间'], ['voice', '语音'], ['imagegen', '生图'], ['speakup', '搭话']].map(([value, label]) => ({ value, label })) }),
-          h('span', { className: 'ab-switch-row' }, h(Switch, { on: auto, onChange: setAuto }), h('span', { className: 'ab-muted ab-small' }, '自动刷新'))) },
-        items === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : items.length === 0 ? h(Empty, { text: '没有符合条件的日志' }) :
-          h('div', { className: 'ab-logs' }, items.slice().reverse().map((e, i) => h(LogLine, { key: i, e }))))
+      // 输入框每敲一个字都请求一次太吵，停手 300ms 再查
+      const [kw, setKw] = useState('')
+      useEffect(() => { const t = setTimeout(() => setKw(q), 300); return () => clearTimeout(t) }, [q])
+      const load = useCallback(() => get('/logs?limit=400&level=' + level + '&area=' + encodeURIComponent(area) + '&q=' + encodeURIComponent(kw)).then((r) => {
+        if (!r.ok) return
+        setItems(r.entries || [])
+        setAreas(r.areas || [])
+        setFiles(r.files || [])
+      }), [level, area, kw])
+      useEffect(() => { const tick = () => { if (!document.hidden) load() }; tick(); if (!auto) return; const t = setInterval(tick, 3000); return () => clearInterval(t) }, [load, auto])
+      const download = async (name) => {
+        const r = await get('/logs/file?name=' + encodeURIComponent(name))
+        if (!r.ok) return
+        const url = URL.createObjectURL(new Blob([r.text], { type: 'text/plain;charset=utf-8' }))
+        const a = document.createElement('a')
+        a.href = url
+        a.download = name
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+        setTimeout(() => URL.revokeObjectURL(url), 5000)
+      }
+      const areaOpts = [{ value: '', label: '所有模块' }].concat(areas.map((a) => ({ value: a, label: a })))
+      return h('div', { className: 'ab-grid' },
+        h(Card, {
+          title: '日志',
+          desc: '所有后台动作都在这里，令牌和密码已自动打码。完整日志按天存在数据目录的 logs/ 下，可以整天下载下来看。',
+          right: h('div', { className: 'ab-flex' },
+            h(Select, { value: level, onChange: setLevel, width: 100, options: [['debug', '全部'], ['info', '一般'], ['warn', '警告'], ['error', '错误']].map(([value, label]) => ({ value, label })) }),
+            h(Select, { value: area, onChange: setArea, width: 130, options: areaOpts }),
+            h('span', { className: 'ab-switch-row' }, h(Switch, { on: auto, onChange: setAuto }), h('span', { className: 'ab-muted ab-small' }, '自动刷新'))),
+        },
+          h('div', { className: 'ab-flex', style: { marginBottom: 10 } },
+            h('input', { className: 'ab-input', style: { flex: 1 }, placeholder: '搜索日志内容或模块名…', value: q, onChange: (e) => setQ(e.target.value) }),
+            q ? h(Btn, { small: true, kind: 'ghost', onClick: () => setQ('') }, '清空') : null),
+          items === null ? h(Empty, { icon: '⏳', text: '加载中…' })
+            : items.length === 0 ? h(Empty, { text: kw ? `没有包含「${kw}」的日志` : '没有符合条件的日志' })
+            : h('div', { className: 'ab-logs' }, items.slice().reverse().map((e, i) => h(LogLine, { key: i, e })))),
+        files.length ? h(Card, { title: '日志文件', desc: '按天一个文件，默认留 14 天。' },
+          h('div', { className: 'ab-list' }, files.map((f) => h('div', { key: f.name, className: 'ab-li' },
+            h('div', { className: 'meta' }, f.name, h('br'), fmtSize(f.size)),
+            h('div', { className: 'body' },
+              h('div', { className: 'ab-muted ab-small' }, new Date(f.at).toLocaleString()),
+              h(Btn, { small: true, onClick: () => download(f.name) }, '下载')))) )) : null)
     }
 
     // ---------------- 备份迁移 ----------------
@@ -2867,7 +3165,9 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     const fmtSize = (n) => (n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + ' MB' : n >= 1024 ? Math.round(n / 1024) + ' KB' : (n || 0) + ' B')
 
     /** 数据目录里的东西打成包带走，换设备时导回来。导出走浏览器下载，导入是整项替换（替换前先备份）。 */
-    function Backup({ toast, reload }) {
+    function Backup({ st, draft, setDraft, toast, reload }) {
+      const f = useField(draft, setDraft)
+      const [auto, setAuto] = useState(null)
       const [parts, setParts] = useState(null)
       const [dir, setDir] = useState('')
       const [exp, setExp] = useState({})
@@ -2880,7 +3180,29 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         setParts(r.parts || [])
         setExp((cur) => (Object.keys(cur).length ? cur : Object.fromEntries((r.parts || []).map((x) => [x.id, x.files > 0]))))
       })
-      useEffect(() => { load() }, [])
+      const loadAuto = () => get('/backup/auto').then((r) => { if (r.ok) setAuto(r) })
+      useEffect(() => { load(); loadAuto() }, [])
+      const runNow = async () => {
+        setBusy('auto')
+        const r = await post('/backup/run', {})
+        setBusy('')
+        toast(r.message, r.ok ? 'ok' : 'err')
+        if (r.ok) setAuto(r)
+      }
+      const restore = async (name) => {
+        if (!window.confirm('用 ' + name + ' 覆盖现在的数据？\n\n备份里有的项会被换回去，没勾选的项不动。恢复前现在的数据也会先抄一份到 backups/。')) return
+        setBusy('restore')
+        const r = await post('/backup/restore', { name })
+        setBusy('')
+        toast(r.message, r.ok ? 'ok' : 'err')
+        if (r.ok) { await load(); await loadAuto(); reload && reload() }
+      }
+      const drop = async (name) => {
+        if (!window.confirm('删掉这份备份 ' + name + '？')) return
+        const r = await post('/backup/delete', { name })
+        toast(r.message, r.ok ? 'ok' : 'err')
+        if (r.ok) setAuto(r)
+      }
       const info = (id) => (parts || []).find((p) => p.id === id) || { id, label: id, desc: '', secret: false }
       const picked = Object.keys(exp).filter((k) => exp[k])
       const total = (parts || []).filter((p) => exp[p.id]).reduce((s, p) => s + p.bytes, 0)
@@ -2952,7 +3274,33 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('b', null, label), secret ? h('span', { className: 'ab-muted ab-small' }, '　⚠ 里面有密钥和密码') : null,
           h('div', { className: 'ab-muted ab-small' }, desc),
           h('div', { className: 'ab-muted ab-small' }, files ? files + ' 个文件 · ' + fmtSize(bytes) : '现在没有')))
+      const autoList = (auto && auto.list) || []
+      const autoRows = autoList.map((x) => h('div', { key: x.name, className: 'ab-li' },
+        h('div', { className: 'meta' }, x.name, h('br'), fmtSize(x.bytes)),
+        h('div', { className: 'body' },
+          h('div', { className: 'ab-muted ab-small' }, new Date(x.at).toLocaleString()),
+          h('div', { className: 'ab-flex', style: { marginTop: 6 } },
+            h(Btn, { small: true, disabled: busy === 'restore', onClick: () => restore(x.name) }, '恢复这份'),
+            h(Btn, { small: true, kind: 'ghost', onClick: () => drop(x.name) }, '删除')))))
+      const autoBody = autoRows.length
+        ? h('div', { className: 'ab-list', style: { marginTop: 10 } }, autoRows)
+        : h('div', { className: 'ab-muted ab-small', style: { marginTop: 8 } }, '还没有备份。')
+      const autoCard = h(Card, {
+        title: '自动备份',
+        desc: '开着就按间隔把整份数据（配置、记忆、表情……）打包进数据目录的 backups/，只留最近几份，不用你记得点。',
+        right: f.sw('backup.auto'),
+      },
+        h(Row, { label: '每隔几小时' }, f.num('backup.everyHours', { min: 1, max: 720 }), h('span', { className: 'ab-muted' }, '小时备份一次（最短 1 小时）')),
+        h(Row, { label: '保留几份', hint: '超出的自动删最旧的' }, f.num('backup.keep', { min: 1, max: 60 }), h('span', { className: 'ab-muted' }, '份')),
+        h('div', { className: 'ab-flex', style: { marginTop: 8 } },
+          h(Btn, { small: true, kind: 'primary', disabled: busy === 'auto', onClick: runNow }, busy === 'auto' ? '打包中…' : '现在备份一份'),
+          auto && auto.lastAt
+            ? h('span', { className: 'ab-muted ab-small' }, '上次：' + new Date(auto.lastAt).toLocaleString())
+            : h('span', { className: 'ab-muted ab-small' }, '还没备份过')),
+        autoBody,
+        auto && auto.dir ? h('div', { className: 'ab-muted ab-small', style: { marginTop: 6 } }, '备份目录：' + auto.dir) : null)
       return h('div', { className: 'ab-grid' },
+        autoCard,
         h(Card, { title: '导出：把她的东西打包带走', desc: '换设备、留个底、或者给另一台机器用。想带哪些就勾哪些，导出文件里图片和脚本都会原样装进去；到新设备上在同一页「导入」它，记性和表情就都回来了（插件本身还是得先装上）。' },
           !parts ? h(Empty, { icon: '⏳', text: '加载中…' }) : h(Fragment, null,
             h('div', { className: 'ab-list' }, parts.map((p) => line(p.id, p.label, p.desc, p.secret, p.files, p.bytes, !!exp[p.id], (v) => setExp({ ...exp, [p.id]: v })))),
@@ -3094,14 +3442,32 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         clearTimeout(toastTimer.current)
         toastTimer.current = setTimeout(() => setToastMsg(null), 3200)
       }
+      // 上一次还没回来就别再发一次：慢的时候会堆请求，也让 React 白重渲染
+      const busyRef = useRef(false)
       const reload = useCallback(async () => {
-        const r = await get('/state')
-        if (!r || r.ok === false) { setErr(r && r.message ? r.message : '读不到插件状态'); return }
-        setErr('')
-        setSt(r)
-        if (!dirtyRef.current) setDraft(clone(r.config))
+        if (busyRef.current) return
+        busyRef.current = true
+        try {
+          const r = await get('/state')
+          if (!r || r.ok === false) { setErr(r && r.message ? r.message : '读不到插件状态'); return }
+          setErr('')
+          setSt(r)
+          if (!dirtyRef.current) setDraft(clone(r.config))
+        } finally {
+          busyRef.current = false
+        }
       }, [])
-      useEffect(() => { reload(); const t = setInterval(reload, 5000); return () => clearInterval(t) }, [reload])
+      // 刷新节奏：概览 / 连接 / 日志这类要看「活」数据的页 5 秒一次，其余页 20 秒一次；
+      // 页面切到后台时完全停掉（/state 一次 20 多 KB，一直拉就是 250KB/分钟）
+      const slow = !(tab === 'overview' || tab === 'connect' || tab === 'logs')
+      useEffect(() => {
+        const tick = () => { if (!document.hidden) reload() }
+        tick()
+        const timer = setInterval(tick, slow ? 20000 : 5000)
+        const onVis = () => { if (!document.hidden) { reload(); tick() } }
+        document.addEventListener('visibilitychange', onVis)
+        return () => { clearInterval(timer); document.removeEventListener('visibilitychange', onVis) }
+      }, [reload, slow])
       const go = (id) => { setTab(id); try { localStorage.setItem('halobot.tab', id) } catch (e) {} }
       // 标签多、一屏放不下：滚轮横着滚，选中的标签自动滚进视野
       const tabsRef = useRef(null)
@@ -3163,11 +3529,11 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       tabs.splice(tabs.findIndex((t) => t.id === 'logs'), 0, ...extTabs)
       const curTab = tabs.find((t) => t.id === tab) || tabs[0]
       const body = curTab.ext ? ExtPage : {
-        overview: Overview, connect: Connect, persona: Persona, access: Access, group: Group, model: Model, voice: Voice,
+        overview: Overview, stats: Stats, sessions: Sessions, connect: Connect, persona: Persona, access: Access, group: Group, model: Model, voice: Voice,
         stickers: Stickers, imagegen: ImageGen, diary: Diary, speakup: SpeakUp, mood: MoodPage, memory: MemoryPage, song: Song, bili: Bili, douyin: Douyin, heybox: Heybox, local: LocalApi, modules: Modules, backup: Backup, logs: Logs,
       }[curTab.id] || Overview
       // 哪些标签有没保存的改动
-      const TAB_KEYS = { connect: ['snowluma', 'botQQ'], access: ['ownerQQ', 'ownerName', 'ownerLevel', 'longTasks', 'profilePerms', 'allow'], group: ['group', 'merge', 'titleFilter'], model: ['model', 'chatModels'], voice: ['voice'], stickers: ['stickers'], imagegen: ['imageGen'], diary: ['diary', 'qzoneSocial'], speakup: ['speakUp'], mood: ['mood'], memory: ['memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], heybox: ['heybox'], local: ['local'] }
+      const TAB_KEYS = { connect: ['snowluma', 'botQQ'], backup: ['backup'], access: ['ownerQQ', 'ownerName', 'ownerLevel', 'longTasks', 'profilePerms', 'allow'], group: ['group', 'merge', 'titleFilter'], model: ['model', 'chatModels'], voice: ['voice'], stickers: ['stickers'], imagegen: ['imageGen'], diary: ['diary', 'qzoneSocial'], speakup: ['speakUp'], mood: ['mood'], memory: ['memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], heybox: ['heybox'], local: ['local'] }
       const tabDirty = (id) => {
         if (!dirty) return false
         if (id.startsWith('ext:')) { const k = id.slice(4); return JSON.stringify((draft.ext || {})[k]) !== JSON.stringify((cfg.ext || {})[k]) }

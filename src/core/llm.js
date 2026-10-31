@@ -2,6 +2,13 @@
 
 import { randomUUID } from 'node:crypto'
 
+// 后台小任务的用量上报：宿主从这儿把每次调用的 usage 交给 features/usage.js 记账
+// （这些调用不进会话，DSH 的 tokenUsage 投影里看不到，只能自己接）。
+let usageSink = null
+export function setUsageSink (fn) {
+  usageSink = typeof fn === 'function' ? fn : null
+}
+
 export function defaultModel(dsh, cfg) {
   if (cfg?.model?.provider && cfg?.model?.model) return { provider: cfg.model.provider, model: cfg.model.model }
   try {
@@ -122,17 +129,26 @@ const isUnsupportedEffort = (error) => {
 
 async function runStream (llm, params) {
   let out = ''
-  for await (const chunk of llm.stream(params)) {
-    if (!chunk) continue
-    if (chunk.type === 'text-delta') out += chunk.text
-    if (chunk.type === 'finish' && chunk.reason && chunk.reason.kind === 'error') {
-      const f = chunk.reason.failure || {}
-      const error = new Error('模型报错：' + (f.message || f.code || '未知'))
-      if (f.code) error.code = f.code
-      throw error
+  let usage = null
+  try {
+    for await (const chunk of llm.stream(params)) {
+      if (!chunk) continue
+      if (chunk.type === 'text-delta') out += chunk.text
+      // 这个调用不进会话，DSH 的 tokenUsage 投影里没有它，所以在流里把 usage 块留下来（usage 在 finish 之前）
+      if (chunk.type === 'usage' && chunk.usage) usage = chunk.usage
+      if (chunk.type === 'finish' && chunk.reason && chunk.reason.kind === 'error') {
+        const f = chunk.reason.failure || {}
+        const error = new Error('模型报错：' + (f.message || f.code || '未知'))
+        if (f.code) error.code = f.code
+        throw error
+      }
+    }
+    return out.trim()
+  } finally {
+    if (usage) {
+      try { usageSink?.(usage) } catch (error) {}
     }
   }
-  return out.trim()
 }
 
 /**
