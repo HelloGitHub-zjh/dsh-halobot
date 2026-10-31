@@ -63,6 +63,26 @@ export function parseMoodJudge(out) {
   }
 }
 
+/**
+ * 这一轮要不要真的去问模型判心情。纯函数，方便单测。
+ * 依次挡掉：开关关着 / 消息太短 / 只有 [表情] 这类占位 / 关键词已经能定性 / 还在冷却期内 / 概率没抽中。
+ */
+export function shouldJudgeMood({ cfg, userText, origin = 'user', now = Date.now(), lastAt = 0, rand = Math.random }) {
+  if (!cfg || !cfg.enabled || !cfg.judge) return false
+  // 她自己主动找人的那几轮本来就不多，而且更能反映她的心意，不抽签
+  if (origin !== 'user') return true
+  const text = String(userText || '').replace(/^【[^】]*】[^：]*：/, '').trim()
+  if (text.length < 6) return false
+  if (/^\[(表情|图片|语音|动画表情|文件|合并转发|链接)\]/.test(text)) return false
+  if (scoreText(text)) return false
+  const cool = Math.max(0, Number(cfg.judgeCooldownSec) || 0) * 1000
+  if (cool && now - lastAt < cool) return false
+  const chance = Number.isFinite(Number(cfg.judgeChance)) ? Number(cfg.judgeChance) : 1
+  if (chance <= 0) return false
+  if (chance >= 1) return true
+  return rand() < chance
+}
+
 export function createMood({ getConfig, dsh }) {
   const file = () => dataDir('mood.json')
   const load = () => readJson(file(), () => ({ value: 65, at: Date.now(), reason: '', history: [], days: {} }))
@@ -71,6 +91,7 @@ export function createMood({ getConfig, dsh }) {
   const SERIES_KEEP_DAYS = 8
   const SAMPLE_GAP_MS = 5 * 60_000
   let lastSampleAt = 0
+  let lastJudgeAt = 0
   const dayKeyOf = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
   const addDay = (s, v) => {
     const days = s.days && typeof s.days === 'object' ? s.days : {}
@@ -142,10 +163,11 @@ export function createMood({ getConfig, dsh }) {
      * 不是对她说的群聊只算三成，主人的话算 1.5 倍。
      */
     observe(text, who, { direct = true, owner = false } = {}) {
-      if (getConfig().mood.judge && dsh) return // 开了模型判断就不用关键词
+      // 模型判定开着时也没必要把关键词关掉：关键词做即时微调，模型抽中时做一次定性校正
+      const scale = getConfig().mood.judge && dsh ? 0.6 : 1
       const d0 = scoreText(text)
       if (!d0) return
-      const d = Math.round(d0 * (direct ? 1 : 0.3) * (owner ? 1.5 : 1))
+      const d = Math.round(d0 * scale * (direct ? 1 : 0.3) * (owner ? 1.5 : 1))
       nudge(d, `${who || '有人'}说「${String(text).slice(0, 20)}」`)
     },
     /**
@@ -155,6 +177,9 @@ export function createMood({ getConfig, dsh }) {
     async judge({ userText, reply, who = '对方', origin = 'user' }) {
       const cfg = getConfig().mood
       if (!cfg.enabled || !cfg.judge || !dsh) return null
+      // 不是每一轮都问模型：抽签、冷却、免费预筛都过了才花这一次
+      if (!shouldJudgeMood({ cfg, userText, origin, lastAt: lastJudgeAt })) return null
+      lastJudgeAt = Date.now()
       const v = current()
       const scene = origin === 'speak-up' ? `这一轮是她自己想${who}了、主动去找${who}说话（不是被叫来干活）` : `这一轮是${who}在跟她说话`
       try {
@@ -167,7 +192,8 @@ export function createMood({ getConfig, dsh }) {
         })
         const r = parseMoodJudge(out)
         if (!r) return null
-        if (r.confidence >= 0.6 && Math.abs(r.delta) >= 2) nudge(r.delta, r.reason || '刚才那一下')
+        const minDelta = Math.max(1, Number(cfg.judgeMinDelta) || 4)
+        if (r.confidence >= 0.6 && Math.abs(r.delta) >= minDelta) nudge(r.delta, r.reason || '刚才那一下')
         return r
       } catch (error) {
         return null

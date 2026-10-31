@@ -167,6 +167,9 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-deep:#9cc4f5;--ab-sea:#6
 .ab-sticker:hover .nm,.ab-sticker:hover .tg{border-color:var(--ab-line)}
 .ab-sticker .nm:focus,.ab-sticker .tg:focus{background:var(--ab-card-2);border-style:solid;border-color:var(--ab-line)}
 .ab-sticker .x{position:absolute;top:4px;right:4px;opacity:0;transition:opacity .15s}
+.ab-sticker .rc{position:absolute;top:4px;left:4px;opacity:0;transition:opacity .15s}
+.ab-sticker:hover .rc{opacity:1}
+.ab-busy{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--ab-sub)}
 .ab-sticker:hover .x{opacity:1}
 .ab-list{display:flex;flex-direction:column}
 .ab-li{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--ab-line)}
@@ -1318,6 +1321,27 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h(Row, { label: '群里停顿多久算一段', hint: '群里大家你一句我一句，多等一会儿把一段话攒齐再回；她回上一段的时候，新消息也会先攒着' }, f.range('merge.groupWaitSec', 1, 20, 1, (v) => v + ' 秒')),
           h(Row, { label: '群里最多等多久' }, f.range('merge.groupMaxSec', 3, 60, 1, (v) => v + ' 秒')),
         ),
+        h(Card, { title: '回复分几条', desc: '真人不按行数说话。她写完一整段，由插件按内容长短决定发成几条。' },
+          h(Row, { label: '怎么拆', hint: '自然：短的一句就够，超过下面字数才拆成两条、再长拆三条；一条：整轮只发一条；按行：以前那样，模型换一行就发一条' },
+            f.choices('reply.split', [
+              { value: 'natural', label: '自然（推荐）', desc: '按长度和句子自动决定，通常一条' },
+              { value: 'one', label: '一条', desc: '整轮只发一条，长就长点' },
+              { value: 'line', label: '按行', desc: '恢复以前的行为：一行一条，容易刷屏' },
+            ])),
+          draft.reply.split === 'natural' ? h(Row, { label: '一条最多几个字', hint: '这段以内一定只发一条。调小＝更容易拆成两条，调大＝更爱一口气说完' },
+            f.num('reply.oneMax', { min: 12, max: 120 }), h('span', { className: 'ab-muted' }, '字')) : null,
+          draft.reply.split === 'natural' ? h(Row, { label: '超过就拆的概率', hint: '默认 100%：超过上面字数就一定拆。调低就有的拆、有的整段发，更像随手打字（不是每条都一个样）' },
+            f.percent('reply.chance')) : null,
+        ),
+        h(Card, { title: '她问完没人回', right: f.sw('followUp.enabled'), desc: '她问完一句、你一直没接的时候，过一会儿补一句很短的催一下（像真人说的「人呢」「说嘛」）。只在问句后触发，你一回话就停。' },
+          h(Row, { label: '等多久补一句', hint: '她问完之后这么多秒还没人回，就补一句；别调太短，不然像催命' }, f.range('followUp.waitSec', 15, 300, 5, (v) => v + ' 秒')),
+          h(Row, { label: '最多补几次', hint: '0 = 不补（等于关掉）。补完还是不回，她就不追了' }, f.num('followUp.maxTimes', { min: 0, max: 5 }), h('span', { className: 'ab-muted' }, '次')),
+          h(Row, { label: '算不算在问', hint: '她很少写问号，所以按语气判断：严格＝明显在等回答才催；宽松＝带点疑问语气也算' },
+            f.choices('followUp.mode', [
+              { value: 'strict', label: '严格（推荐）', desc: '明显在等回答才补' },
+              { value: 'loose', label: '宽松', desc: '带疑问语气也补，会更主动' },
+            ])),
+        ),
         h(TitleFilter, { draft, setDraft }),
         h(OwnerBrief, { draft, setDraft }),
         h(Card, { title: '发文件', right: f.sw('files.enabled'), desc: '打开后，你在私聊里可以让她把本机文件当文件发到 QQ，也能按你说的发给白名单里的人或群。她只能发 QQ 工作区和下面目录里的文件；单个文件有大小上限；发过什么会记在日志里。' },
@@ -1546,6 +1570,37 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const load = () => get('/stickers').then((r) => setItems(r.items || []))
       useEffect(() => { load() }, [])
       const [newName, setNewName] = useState('')
+      const [dirPath, setDirPath] = useState('')
+      const [busy, setBusy] = useState('')
+      /** 让模型把每张图重新看一遍，重起名字和标签（表情和标签对不上时用）。 */
+      const recaptionAll = async () => {
+        if (!items || !items.length) return toast('表情库还是空的', 'err')
+        if (!confirm(`让模型重新看一遍这 ${items.length} 张表情，覆盖现在的名字和标签？`)) return
+        let offset = 0
+        let total = 0
+        setBusy('正在重新打标…')
+        for (let guard = 0; guard < 60; guard++) {
+          const r = await post('/sticker/recaption', { all: true, offset, limit: 6 })
+          if (!r.ok) { toast(r.message || '没成功', 'err'); break }
+          total += r.done || 0
+          setBusy(`重新打标：已改 ${total} 张${r.left ? `，还剩 ${r.left} 张…` : ''}`)
+          load()
+          if (!r.left) { toast(`重新打标完成，改了 ${total} 张`, 'ok'); break }
+          offset += 6
+        }
+        setBusy('')
+        load()
+      }
+      /** 从本机文件夹批量导入图片（名字 / 标签在后台慢慢起，过后点刷新看）。 */
+      const importDir = async () => {
+        const path = dirPath.trim()
+        if (!path) return toast('先填一个文件夹路径', 'err')
+        setBusy('正在导入…')
+        const r = await post('/sticker/import-dir', { path })
+        setBusy('')
+        toast(r.message || (r.ok ? '导入完成' : '没导进来'), r.ok ? 'ok' : 'err')
+        load()
+      }
       // DSH 是 Electron，不支持 prompt() 弹框：名字在页面上填（不填就自动看图起名）
       const upload = async (files) => {
         const list = [...(files || [])]
@@ -1572,6 +1627,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Row, { label: '回复里写表情的发出去概率', hint: '她主动写 <sticker:名字> 时，按这个概率真的发；调低就不那么爱发表情了。心情好的时候会再高一点' }, f.percent('stickers.inlineChance')),
           h(Row, { label: '自动配表情的概率' }, f.percent('stickers.autoChance')),
           h(Row, { label: '夹 QQ 小黄脸', hint: '回复里能夹 QQ 自带的系统表情（/捂脸 /斜眼笑 这种），和文字在同一条消息里' }, f.sw('stickers.faces')),
+          draft?.stickers?.faces !== false ? h(Row, { label: '文字里夹小黄脸发出去的概率', hint: '写在句子中间的 QQ 小黄脸（<face:名字>，也包括她把小黄脸误写成 <sticker:…> 转过来的）：按这个概率真的发，没中的只是这张脸不发，文字照发' }, f.percent('stickers.faceChance')) : null,
           h(Row, { label: '偷表情', hint: '别人发的表情包会被收藏（普通照片不收）。' }, f.sw('stickers.collect'), h('span', { className: 'ab-muted' }, '从群里'), f.sw('stickers.fromGroups'), h('span', { className: 'ab-muted' }, '从私聊'), f.sw('stickers.fromPrivate')),
           draft.stickers.collect ? h(Row, { label: '怎么偷', hint: '「她挑」只递给她看，喜欢才收；「只听主人的」只在主人私聊 / 这一轮只有主人时她才可自己收，有别人在场要主人发话' },
             f.choices('stickers.collectMode', [
@@ -1588,28 +1644,50 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('input', { className: 'ab-input sm', style: { width: 140 }, placeholder: '名字（可不填）', value: newName, onChange: (e) => setNewName(e.target.value) }),
           h(Btn, { small: true, onClick: () => fileRef.current && fileRef.current.click() }, '＋ 上传'),
           h(Btn, { small: true, title: '把机器人号 QQ「我喜欢的」里已有的表情导进来', onClick: async () => { toast('正在从 QQ 收藏导入…'); const r = await post('/sticker/import-qq'); toast(r.message, r.ok === false ? 'err' : 'ok'); load() } }, '从 QQ 收藏导入'),
+          h(Btn, { small: true, title: '让模型重新看一遍所有表情，重起名字和标签', onClick: recaptionAll }, '按图重新打标'),
           h(Btn, { small: true, kind: 'ghost', onClick: load }, '刷新')) },
+          h('div', { className: 'ab-flex', style: { gap: 8, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' } },
+            h('input', { className: 'ab-input sm', style: { width: 260 }, placeholder: '文件夹路径，例如 /Users/你/表情', value: dirPath, onChange: (e) => setDirPath(e.target.value) }),
+            h(Btn, { small: true, onClick: importDir }, '从文件夹导入'),
+            busy ? h('span', { className: 'ab-busy' }, '⏳ ' + busy) : null,
+            h('span', { className: 'ab-muted ab-small' }, '导入的图会自动起名字，标签可以在下面每张表情的输入框里改。')),
           items === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : items.length === 0 ? h(Empty, { icon: '🐳', text: '表情库还是空的。别人在群里发表情包，她会自己收；也可以点右上角上传，或者「从 QQ 收藏导入」机器人号已经收藏的表情。' }) :
             h('div', { className: 'ab-stickers' }, items.map((it) => h(StickerCell, { key: it.md5, it, onChanged: load, toast }))),
         ),
       )
     }
 
-    /** 一张表情：名字（备注）和标签都能直接改，改完离开输入框就保存（#31：模型起的名字 / 标签不对时手动纠正）。 */
+    /**
+     * 一张表情：名字 / 标签都能直接改（离开输入框就保存）。
+     * 左上角 ⟳ 让模型重新看这张图重起名字（表情和标签对不上时用）。
+     */
     function StickerCell({ it, onChanged, toast }) {
-      const [name, setName] = useState(it.name || '')
       const tagText = (it.tags || []).join(' ')
+      const [name, setName] = useState(it.name || '')
       const [tags, setTags] = useState(tagText)
+      const [busy, setBusy] = useState(false)
+      useEffect(() => {
+        setName(it.name || '')
+        setTags((it.tags || []).join(' '))
+      }, [it.md5, it.name, tagText])
       const save = async (body, label) => {
         const r = await post('/sticker/rename', { md5: it.md5, ...body })
         toast(r.ok ? label + '改好了' : '没改成：' + (r.message || '找不到这张表情'), r.ok ? 'ok' : 'err')
         if (r.ok) onChanged()
       }
+      const redo = async () => {
+        setBusy(true)
+        const r = await post('/sticker/recaption', { md5: it.md5 })
+        setBusy(false)
+        toast(r.ok ? '重新认好了' : (r.message || '没认出来'), r.ok ? 'ok' : 'err')
+        if (r.ok) onChanged()
+      }
       return h('div', { className: 'ab-sticker' },
         h('img', { src: API + '/sticker/image?md5=' + it.md5, alt: it.name || '表情', loading: 'lazy' }),
+        h('button', { type: 'button', className: 'ab-btn sm ghost rc', title: '让模型重新看这张图，重起名字和标签', disabled: busy, onClick: redo }, busy ? '…' : '⟳'),
         h('input', { className: 'nm', value: name, placeholder: '未命名（点这里改）', title: '名字 / 备注，最多 12 字', maxLength: 12, onChange: (e) => setName(e.target.value),
           onBlur: () => { if (name !== (it.name || '')) save({ name }, '名字') } }),
-        h('input', { className: 'tg', value: tags, placeholder: '加标签，空格隔开', title: '标签，空格或逗号隔开，最多 5 个', onChange: (e) => setTags(e.target.value),
+        h('input', { className: 'tg', value: tags, placeholder: '也可以自己写，空格隔开', title: '标签，空格或逗号隔开，最多 5 个', onChange: (e) => setTags(e.target.value),
           onBlur: () => { if (tags.trim() !== tagText) save({ tags: tags.split(/[\s,，、#]+/).map((x) => x.trim()).filter(Boolean).slice(0, 5) }, '标签') } }),
         h('button', { type: 'button', className: 'ab-btn sm danger x', title: '删除', onClick: async () => { if (!confirm('删掉这张表情？（QQ 收藏里也会删）')) return; await post('/sticker/delete', { md5: it.md5 }); onChanged() } }, '✕'),
       )
@@ -1838,7 +1916,11 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               st.mood.series.map((x) => h('div', { key: x.day, className: 'ab-muted ab-small', style: { flex: '1 1 0', textAlign: 'center', minWidth: 0 } }, String(x.day).slice(5))))) : null,
           h('div', { style: { marginTop: 10 } },
             h(Row, { label: '多久回到平常', hint: '半衰期' }, f.range('mood.halfLifeHours', 0.5, 24, 0.5, (v) => v + ' 小时')),
-            h(Row, { label: '用模型判断心情', hint: '每轮聊完用模型判一次（能分清开玩笑和真骂、她主动找你时的心意），更准；每轮多一次很短的模型调用。关着就按关键词' }, f.sw('mood.judge'))),
+            h(Row, { label: '用模型判断心情', hint: '开着：抽中的轮次问一次模型（能分清开玩笑和真骂），没抽中的轮次仍按关键词打分；关着：只按关键词' }, f.sw('mood.judge')),
+            draft?.mood?.judge ? h('div', {},
+              h(Row, { label: '判定概率', hint: '不是每轮都问模型，只有抽中的轮次才花这一次' }, f.percent('mood.judgeChance')),
+              h(Row, { label: '最短间隔', hint: '两次模型判定至少隔多久' }, h('div', { className: 'ab-row' }, f.num('mood.judgeCooldownSec', { min: 0, max: 900, step: 10 }), h('span', { className: 'ab-muted ab-small' }, ' 秒'))),
+              h(Row, { label: '变化阈值', hint: '模型给的变化小于这个数就不算，免得心情抖来抖去' }, f.num('mood.judgeMinDelta', { min: 1, max: 15 }))) : null),
           (st.mood.history || []).length ? h('div', { className: 'ab-list', style: { marginTop: 8 } }, st.mood.history.slice(0, 6).map((x, i) => h('div', { key: i, className: 'ab-li' },
             h('div', { className: 'meta' }, timeAgo(x.at)),
             h('div', { className: 'body' }, (x.to >= x.from ? '↑ ' : '↓ ') + x.from + ' → ' + x.to, h('span', { className: 'ab-muted ab-small' }, '  ' + x.reason))))) : null,

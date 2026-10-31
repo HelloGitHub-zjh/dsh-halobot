@@ -2,7 +2,7 @@
 // 发送时按备注 / 标签模糊匹配。本地库：~/.dsh/plugins-data/halobot/stickers/
 
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { dataDir, readJson, writeJson } from '../core/store.js'
 import { imageSize, mimeOf, stickerSizeOk } from '../chat/inbound.js'
@@ -13,7 +13,7 @@ const dir = () => dataDir('stickers')
 const indexFile = () => join(dir(), 'index.json')
 const ext = (mime) => ({ 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' })[mime] || 'jpg'
 
-export const DEFAULT_TAGS = ['开心', '卖萌', '生气', '委屈', '无语', '嘲讽', '疑惑', '早晚安']
+export const DEFAULT_TAGS = ['开心', '卖萌', '生气', '委屈', '无语', '嘲讽', '疑惑', '早晚安', '震惊', '尴尬', '加油', '害羞', '谢谢', '对不起']
 
 export function loadLibrary() {
   return readJson(indexFile(), () => ({ items: [] }))
@@ -292,5 +292,83 @@ export function createStickerStore({ dsh, getConfig, onebot, log }) {
     return importing
   }
 
-  return { importFromQQ, collect, addFromBuffer, remove, rename, segmentFor, markUsed, trim, library: loadLibrary, match: (q) => matchSticker(loadLibrary().items, q), pickForReply: (t) => pickForReply(loadLibrary().items, t) }
+  /**
+   * 按图重新起名 / 打标：表情和标签对不上时，让模型重新看一眼。
+   * all=true 时按 offset 分批，避免一次把模型打满；返回这一批还剩多少张没做。
+   */
+  async function recaption({ md5 = '', all = false, offset = 0, limit = 8 } = {}) {
+    if ((await canSeeImages(dsh, getConfig())) === false) return { ok: false, message: '现在这个模型看不了图，改不了名字' }
+    const lib = loadLibrary()
+    const targets = md5 ? lib.items.filter((i) => i.md5 === md5) : lib.items.slice()
+    const from = md5 ? 0 : Math.max(0, Number(offset) || 0)
+    const todo = targets.slice(from, from + Math.max(1, Math.min(30, Number(limit) || 8)))
+    let done = 0
+    for (const it of todo) {
+      const file = stickerPath(it)
+      if (!existsSync(file)) continue
+      let buf
+      try { buf = readFileSync(file) } catch (error) { continue }
+      const { name, tags } = await caption(buf, mimeOf(buf), it.summary || '')
+      if (!name && !tags.length) continue
+      const l = loadLibrary()
+      const cur = l.items.find((x) => x.md5 === it.md5)
+      if (!cur) continue
+      if (name) cur.name = String(name).slice(0, 12)
+      if (tags.length) cur.tags = [...new Set(tags)].slice(0, 5)
+      saveLibrary(l)
+      done++
+    }
+    const left = md5 ? 0 : Math.max(0, targets.length - from - todo.length)
+    log.info(`重新打标：这一批改了 ${done} 张${left ? `，还剩 ${left} 张` : '，全做完了'}`)
+    return { ok: true, done, left, message: left ? `改了 ${done} 张，还剩 ${left} 张` : `改了 ${done} 张，全部更新完` }
+  }
+
+  /** 从本机文件夹批量导入图片（png/jpg/gif/webp），名字 / 标签在后台慢慢起。 */
+  async function importFromDir(dirPath) {
+    const p = String(dirPath || '').trim()
+    if (!p) return { ok: false, message: '要填一个文件夹路径' }
+    let names
+    try { names = readdirSync(p) } catch (error) { return { ok: false, message: '读不了这个文件夹：' + error.message } }
+    const list = names.filter((n) => /\.(png|jpe?g|gif|webp)$/i.test(n)).slice(0, 300)
+    if (!list.length) return { ok: false, message: '这个文件夹里没有 png / jpg / gif / webp 图片' }
+    let added = 0
+    let existed = 0
+    let failed = 0
+    const fresh = []
+    for (const n of list) {
+      try {
+        const buf = readFileSync(join(p, n))
+        if (!buf.length || buf.length > 5 * 1024 * 1024) { failed++; continue }
+        const r = await addFromBuffer(buf, { from: 'panel', name: '', tags: [], toQQ: false })
+        if (r.ok && !r.existed) { added++; fresh.push({ md5: r.item?.md5 || r.md5, buf }) } else if (r.existed) existed++
+        else failed++
+      } catch (error) { failed++ }
+    }
+    log.info(`从文件夹导入表情：${p} → 新加 ${added} 张，已有 ${existed} 张，失败 ${failed} 张`)
+    if (fresh.length && getConfig().stickers.caption) {
+      ;(async () => {
+        for (const { md5, buf } of fresh) {
+          const { name, tags } = await caption(buf, mimeOf(buf), '')
+          const l = loadLibrary()
+          const it = l.items.find((i) => i.md5 === md5)
+          if (!it || it.name) continue
+          it.name = name || '表情'
+          if (tags.length) it.tags = tags
+          saveLibrary(l)
+        }
+      })().catch((error) => log.warn('给文件夹导入的表情起名出错：', error.message))
+    }
+    return { ok: true, added, existed, failed, message: `文件夹里 ${list.length} 张图：新导入 ${added} 张，已经有 ${existed} 张${failed ? `，${failed} 张没成功` : ''}${added && getConfig().stickers.caption ? '。名字在后台慢慢起' : ''}` }
+  }
+
+  /** 库里出现最多的标签（给提示词用，让她别瞎编名字）。 */
+  const popularTags = (limit = 12) => {
+    const count = new Map()
+    for (const it of loadLibrary().items) for (const t of it.tags || []) {
+      const k = String(t || '').trim()
+      if (k) count.set(k, (count.get(k) || 0) + 1)
+    }
+    return [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, limit).map((x) => x[0])
+  }
+  return { importFromQQ, importFromDir, recaption, collect, addFromBuffer, remove, rename, segmentFor, markUsed, trim, popularTags, library: loadLibrary, match: (q) => matchSticker(loadLibrary().items, q), pickForReply: (t) => pickForReply(loadLibrary().items, t) }
 }

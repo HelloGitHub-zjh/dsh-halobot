@@ -39,7 +39,7 @@ export function isSilence(text) {
  * @param {string} text 模型这一轮的最终正文
  * @returns {{silent: boolean, items: Array<{kind:'text'|'voice'|'sticker'|'image', value:string, replyTo?:string}>}}
  */
-export function parseReply(text) {
+export function parseReply(text, opts = {}) {
   const raw = String(text || '').trim()
   if (isSilence(raw)) return { silent: true, items: [] }
   const items = []
@@ -59,7 +59,7 @@ export function parseReply(text) {
     let m
     while ((m = re.exec(part)) !== null) {
       let from = items.length
-      pushText(items, part.slice(last, m.index))
+      pushText(items, part.slice(last, m.index), opts)
       attach(from)
       from = items.length
       if (m[0].startsWith('<poke')) {
@@ -79,7 +79,7 @@ export function parseReply(text) {
       last = re.lastIndex
     }
     const from = items.length
-    pushText(items, part.slice(last))
+    pushText(items, part.slice(last), opts)
     attach(from)
   }
   // 一轮最多引用一次，多的去掉（大多数时候正常发就好）
@@ -90,17 +90,101 @@ export function parseReply(text) {
     quoted = true
   }
   if (items.length === 0) return { silent: true, items: [] }
-  return { silent: false, items: capBubbles(items) }
+  return { silent: false, items: capBubbles(items, opts.max) }
 }
 
-const MAX_BUBBLES = 5
+const MAX_BUBBLES = 3
+const ONE_MAX = 24 // 这段以内就一条（真人短回合一两句就是一条）
+const CHUNK = 60 // 要拆的时候每条大致多长
 
-/** 文字气泡最多 5 条，多出来的并进最后一条（防止刷屏）。 */
-function capBubbles(items) {
+const ENDS_PUNCT = /[，。！？!?…～~,.]$/
+const tidyEdge = (s) => String(s || '').replace(/^[\s，、,。.；;：:！!？?…～~]+/, '').replace(/[\s，、,]+$/, '')
+
+/** 把模型的换行接回一句话：上一行已经有标点就直接接，否则用逗号连（像一口气说完）。 */
+function joinLines(lines) {
+  let out = ''
+  for (const raw of lines) {
+    const s = String(raw || '').trim()
+    if (!s) continue
+    out = !out ? s : ENDS_PUNCT.test(out) ? out + s : `${out}，${s}`
+  }
+  return out
+}
+
+/** 切成「一口气的小段」：句末标点、逗号、以及模型自己打的空格都算一次换气。 */
+const SPLIT_AT = /(?<=[。！？!?…～~])|\s+|(?<=[，、；])/
+function beats(t) {
+  const out = []
+  for (const raw of String(t).split(SPLIT_AT)) {
+    const w = tidyEdge(raw)
+    if (!w) continue
+    // 太长的一段再按逗号拆一次
+    if (w.length > 45) {
+      let buf = ''
+      for (const seg of w.split(/(?<=[，、；])/)) {
+        if (buf && buf.length + seg.length > 40) { out.push(tidyEdge(buf)); buf = '' }
+        buf += seg
+      }
+      if (buf) out.push(tidyEdge(buf))
+    } else out.push(w)
+  }
+  return out.filter(Boolean)
+}
+
+/** 把相邻两段接起来：都是英文单词时才补空格，中文直接接。 */
+const glue = (a, b) => (!a ? b : !b ? a : /[A-Za-z0-9]$/.test(a) && /^[A-Za-z0-9]/.test(b) ? `${a} ${b}` : a + b)
+
+/** 把几段并成 want 组，尽量让每组差不多长。 */
+function groupBeats(list, want) {
+  if (list.length <= 1) return [list.join('')]
+  const w = Math.min(want, list.length)
+  if (w <= 1) return [list.join('')]
+  const total = list.reduce((n, s) => n + s.length, 0)
+  const target = total / w
+  const out = []
+  let buf = ''
+  for (let i = 0; i < list.length; i++) {
+    buf = glue(buf, list[i])
+    const left = list.length - i - 1
+    const need = w - out.length - 1
+    if (out.length < w - 1 && (buf.length >= target * 0.9 || left <= need)) {
+      out.push(buf)
+      buf = ''
+    }
+  }
+  if (buf) out.push(buf)
+  return out.map(tidyEdge).filter(Boolean)
+}
+
+/**
+ * 一段文字拆成几条气泡。
+ * opts.split：'natural'（默认）按长度和句子拆；'one' 整轮一条；'line' 旧的按行拆。
+ * 有代码块、像列表、或者很长（>240 字）就整段发。
+ */
+export function splitLines(text, { max = MAX_BUBBLES, split = 'natural', oneMax = ONE_MAX, chance = 1, rand = Math.random } = {}) {
+  const t = String(text || '').trim()
+  if (!t) return []
+  if (t.includes('```') || t.length > 240) return [t]
+  const lines = t.split(/\n+/).map((s) => s.trim()).filter(Boolean)
+  if (split === 'line') return lines.length ? lines : [t]
+  if (split === 'one') return [joinLines(lines)]
+  const listy = lines.filter((l) => /^(\d+[.、)]|[-*•·])/.test(l)).length
+  if (lines.length > 1 && listy >= Math.ceil(lines.length / 2)) return [t]
+  const one = joinLines(lines)
+  if (!one) return []
+  const list = beats(one)
+  if (one.length <= oneMax || list.length < 2) return [one]
+  if (chance < 1 && rand() > chance) return [one]
+  const want = one.length > 90 ? 3 : 2
+  return groupBeats(list, Math.min(max, want))
+}
+
+/** 文字气泡最多 max 条，多出来的并进最后一条（防止刷屏）。 */
+function capBubbles(items, max = MAX_BUBBLES) {
   const texts = items.filter((i) => i.kind === 'text')
-  if (texts.length <= MAX_BUBBLES) return items
-  const keep = new Set(texts.slice(0, MAX_BUBBLES - 1))
-  const tail = texts.slice(MAX_BUBBLES - 1)
+  if (texts.length <= max) return items
+  const keep = new Set(texts.slice(0, max - 1))
+  const tail = texts.slice(max - 1)
   const merged = { kind: 'text', value: tail.map((t) => t.value).join('\n') }
   const out = []
   let placed = false
@@ -111,26 +195,10 @@ function capBubbles(items) {
   return out
 }
 
-/**
- * 一段文字拆成几条气泡：真人打字是一行一条发出去的。
- * 有代码块、或者是长篇内容（比如帮主人查东西的结果）就整段发，不拆。
- */
-export function splitLines(text) {
-  const t = String(text || '').trim()
-  if (!t) return []
-  if (t.includes('```') || t.length > 240) return [t]
-  const lines = t.split(/\n+/).map((s) => s.trim()).filter(Boolean)
-  if (lines.length <= 1) return lines
-  // 像列表 / 步骤的多行内容（一大半以数字或符号开头）也整段发
-  const listy = lines.filter((l) => /^(\d+[.、)]|[-*•·])/.test(l)).length
-  if (listy >= Math.ceil(lines.length / 2)) return [t]
-  return lines
-}
-
-function pushText(items, s) {
+function pushText(items, s, opts = {}) {
   const t = stripMarkdown(String(s || '').replace(/<\/?reply[^>]*>/g, '')) // 写坏的引用标签直接去掉
   if (!t || isSilence(t)) return
-  for (const line of splitLines(t)) if (!isSilence(line)) items.push({ kind: 'text', value: line })
+  for (const line of splitLines(t, opts)) if (!isSilence(line)) items.push({ kind: 'text', value: line })
 }
 
 /** 对方是不是明确要她发语音（「用语音说」「发个语音」「语音回我」……）。 */

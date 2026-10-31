@@ -98,7 +98,8 @@ export const DEFAULTS = {
     enabled: true,
     faces: true, // 回复里能夹 QQ 自带的小黄脸（<face:名字>）
     autoChance: 0.35, // 文字回复自动配一张表情的概率
-    inlineChance: 0.5, // 回复里写 <sticker:…> 时真的发出去的概率（表情包太勤了，默认一半）
+    inlineChance: 0.5, // 回复里写 <sticker:…> 时真的发出去的概率
+    faceChance: 0.7, // 文字里夹的 QQ 小黄脸（<face:…>，含 <sticker:小黄脸> 转过来的）真的发出去的概率（表情包太勤了，默认一半）
     collect: true, // 偷表情
     // 怎么偷：auto = 看到就收（默认，保持原行为）；ask = 她挑（先记着，喜欢才凭编号收）；owner = 只听主人的（只有主人语境下才提示/允许收）
     collectMode: 'auto',
@@ -107,6 +108,20 @@ export const DEFAULTS = {
     maxPerHour: 20,
     maxLibrary: 300, // 表情库最多存多少张（QQ 收藏表情有上限），超了就清掉最少用的
     caption: true, // 用视觉模型起备注
+  },
+  // 一轮回复拆成几条气泡：natural 按长度和句子决定（默认，像真人一口气说完）/ one 永远一条 / line 旧的按行拆
+  reply: {
+    split: 'natural',
+    max: 0, // 0 = 按场景（私聊 3、群聊 2）；也可以写 1–4
+    oneMax: 24, // 一段话不超过这么多字就发一条（面板可调）
+    chance: 1, // 超过 oneMax 时真的拆成两条的概率（1 = 一定拆）
+  },
+  // 她问完一句、对方一直没回：过一会儿补一句很短的催一下（像真人说的"人呢""说嘛"）
+  followUp: {
+    enabled: true,
+    waitSec: 60, // 问完之后等多久还没人回就补一句
+    maxTimes: 2, // 同一轮最多补几次；对方一说话就清零
+    mode: 'strict', // strict：只认「明显在等回答」的话；loose：更松，连语气词也算
   },
   diary: {
     enabled: true,
@@ -206,7 +221,9 @@ export const DEFAULTS = {
     awakeFrom: 8,
     awakeTo: 23,
   },
-  mood: { enabled: true, halfLifeHours: 3, judge: false }, // judge：每轮聊完用模型判一次心情（更准，每轮多一次很短的调用）；关着用关键词
+  // judge：每轮聊完用模型判心情（更准）。judgeChance 只抽一部分轮次判，judgeCooldownSec 两次判定至少隔多久，
+  // judgeMinDelta 小于这个变化就不写盘（防抖）；关掉 judge 就只按关键词打分
+  mood: { enabled: true, halfLifeHours: 3, judge: false, judgeChance: 0.25, judgeCooldownSec: 120, judgeMinDelta: 4 },
   memory: { enabled: true, recallCount: 6, dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
   song: {
     enabled: false,
@@ -326,6 +343,17 @@ export function normalize(raw) {
   c.voice.autoMaxChars = num(c.voice.autoMaxChars, 80, 1, 500)
   c.stickers.autoChance = num(c.stickers.autoChance, 0.35, 0, 1)
   c.stickers.inlineChance = num(c.stickers.inlineChance, 0.5, 0, 1)
+  c.stickers.faceChance = num(c.stickers.faceChance, 0.7, 0, 1)
+  // 拆条：只认 natural / one / line，其余回落 natural；max 0 = 按场景
+  if (!['natural', 'one', 'line'].includes(c.reply?.split)) c.reply = { ...(c.reply || {}), split: 'natural' }
+  c.reply.max = num(c.reply.max, 0, 0, 4)
+  c.reply.oneMax = num(c.reply.oneMax, 24, 12, 120)
+  c.reply.chance = num(c.reply.chance, 1, 0, 1)
+  if (!isObj(c.followUp)) c.followUp = { ...DEFAULTS.followUp }
+  c.followUp.enabled = bool(c.followUp.enabled, true)
+  c.followUp.waitSec = num(c.followUp.waitSec, 60, 15, 600)
+  c.followUp.maxTimes = num(c.followUp.maxTimes, 2, 0, 5)
+  if (!['strict', 'loose'].includes(c.followUp.mode)) c.followUp.mode = 'strict'
   c.stickers.faces = c.stickers.faces !== false
   c.stickers.collectMode = ['ask', 'auto', 'owner'].includes(c.stickers.collectMode) ? c.stickers.collectMode : 'auto'
   c.stickers.maxPerHour = num(c.stickers.maxPerHour, 20, 0, 200)
@@ -361,6 +389,9 @@ export function normalize(raw) {
   q.intervalMin = num(q.intervalMin, 30, 5, 1440)
   c.mood.halfLifeHours = num(c.mood.halfLifeHours, 3, 0.25, 72)
   c.mood.judge = bool(c.mood.judge, false)
+  c.mood.judgeChance = num(c.mood.judgeChance, 0.25, 0, 1)
+  c.mood.judgeCooldownSec = num(c.mood.judgeCooldownSec, 120, 0, 900)
+  c.mood.judgeMinDelta = num(c.mood.judgeMinDelta, 4, 1, 15)
   for (const k of ['tts', 'image', 'song', 'asr']) c.local[k] = bool(c.local[k], false)
   const b = c.bili
   Object.assign(b, splitBiliCookie(b))

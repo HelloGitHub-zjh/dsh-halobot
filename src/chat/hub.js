@@ -53,6 +53,79 @@ const sessionKey = (id) => {
  */
 // 模拟测试：这里面发出去的消息只记下来，不真发
 const captureStore = new AsyncLocalStorage()
+
+/**
+ * <sticker:名字> 在图库里找不到、但这个名字是 QQ 系统表情时，改成 <face:名字>。
+ * 纯函数（注入两个查找器），方便单测。
+ */
+export function stickerToFaceTags(text, { hasSticker = () => false, faceIdOf = () => undefined } = {}) {
+  const s = String(text || '')
+  if (!s.includes('<sticker:')) return s
+  return s.replace(/<sticker:\s*([^>]{1,20}?)\s*>(?:\s*<\/sticker>)?/g, (all, name) => {
+    const n = String(name).trim()
+    if (!n || hasSticker(n)) return all
+    const id = faceIdOf(n)
+    return id === undefined || id === null ? all : `<face:${n}>`
+  })
+}
+
+// 「她在等对方回答」的几种说法：疑问词、问句标记、语气词
+const ASK_WORDS = /什么|怎么|咋|为什么|为啥|哪儿|哪里|哪|谁|多少|多久|几点|是不是|有没有|要不要|能不能|会不会|对不对|好不好|行不行|怎么样|咋样|干嘛|干啥/
+const ASK_END = /[呢吗嘛]\s*$/
+const ASK_PHRASE = /怎么了|咋了|怎么办|咋办/
+const NEG_ASK = /没[啊呀呢吗吧]?\s*$/
+const SOFT_END = /[啊呀哦喔耶]\s*$/
+const SUGGEST_END = /吧\s*$/
+const PLACEHOLDER = /\[(表情|图片|语音|动画表情|文件)\]/g
+// 中文问句的「问点」一般在最后一个小句里（「你说一半又吊胃口，平时到底怎么了」）
+const CLAUSE_SPLIT = /[，。！？!?…；;]/
+
+/**
+ * 她最后一句有多像「在等对方回答」。她几乎不写问号（真数据 180 条里只有 1 条以问号结尾），
+ * 所以不能只看标点：按最后一个小句里的疑问词、问句标记、语气词打分。
+ */
+export function questionScore(text) {
+  const all = String(text || '').trim()
+  if (!all) return 0
+  const line = (all.split('\n').map((x) => x.trim()).filter(Boolean).pop() || all).replace(PLACEHOLDER, '').trim()
+  const tail = (line.split(CLAUSE_SPLIT).map((x) => x.trim()).filter(Boolean).pop() || line).trim()
+  if (!tail) return 0
+  let score = 0
+  if (/[？?]\s*$/.test(line)) score += 3
+  if (ASK_WORDS.test(tail)) score += 2
+  if (ASK_PHRASE.test(tail)) score += 2
+  if (ASK_END.test(tail)) score += 3
+  if (NEG_ASK.test(tail)) score += 2
+  if (SOFT_END.test(tail)) score += 1
+  if (SUGGEST_END.test(tail)) score -= 2
+  if (tail.length <= 12) score += 1
+  return score
+}
+
+/**
+ * 文字里夹的 QQ 小黄脸按概率保留（<face:名字>，包括 <sticker:小黄脸> 转过来的）。
+ * 不是整句丢：只是这张脸不发了，文字照发。纯函数（注入随机源），方便单测。
+ */
+export function dropFaces(text, chance = 1, rand = Math.random) {
+  const s = String(text || '')
+  if (!s.includes('<face:')) return s
+  const c = Number(chance)
+  if (!Number.isFinite(c) || c >= 1) return s
+  if (c <= 0) return s.replace(/<face:\s*[^>]{1,20}?\s*>(?:\s*<\/face>)?/g, '')
+  return s.replace(/<face:\s*([^>]{1,20}?)\s*>(?:\s*<\/face>)?/g, (all) => (rand() < c ? all : ''))
+}
+
+/**
+ * 她刚说完的这句是不是在等对方回答，以及还该不该补一句（纯函数，方便单测）。
+ * strict 默认阈值 3，loose 阈值 2。
+ */
+export function followUpDue({ cfg, lastText = '', count = 0 }) {
+  if (!cfg || !cfg.enabled) return false
+  if (Number(count) >= Number(cfg.maxTimes ?? 2)) return false
+  const threshold = cfg.mode === 'loose' ? 2 : 3
+  return questionScore(lastText) >= threshold
+}
+
 export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildTools, contextProviders, onActivity, memoryScore, onCommand, isMuted, moodEffects, localApi, hooks, availableModels, toolsGeneration }) {
   // 心情对行为的影响（表情 / 语音概率、回复快慢、插话积极程度），没接就是 1
   const mood = () => (typeof moodEffects === 'function' ? moodEffects() : null) || { sticker: 1, voice: 1, delay: 1, chatty: 1 }
@@ -670,6 +743,17 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     }
   }
 
+  /**
+   * 模型常把 QQ 小黄脸写成 <sticker:白眼>：图库里没有这张就转成 <face:白眼>，
+   * 让小黄脸夹在文字里发出去，而不是整句被跳过（今天真数据里 14 次「没找到」都是这类）。
+   */
+  function rewriteStickerTags(text) {
+    return stickerToFaceTags(text, {
+      hasSticker: (name) => Boolean(stickers.match(name)),
+      faceIdOf: (name) => faces.idOf(name),
+    })
+  }
+
   async function sendSticker(chatId, query, replyId, userId) {
     // 面板里把表情包关了：回复里的 <sticker:…>、工具、扩展模块要发的一律不发（#31）
     if (!getConfig().stickers.enabled) {
@@ -678,6 +762,13 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     }
     const item = query && typeof query === 'object' ? query : stickers.match(query)
     if (!item) {
+      // 图库里没有，但它是 QQ 系统表情（小黄脸）：发成 face 段
+      const faceId = faces.idOf(typeof query === 'object' ? query?.name : query)
+      if (faceId !== undefined && faceId !== null) {
+        await sendSegments(chatId, [...quote(replyId), ...mention(userId), { type: 'face', data: { id: String(faceId) } }], `[小黄脸] ${typeof query === 'object' ? query?.name || '' : query}`)
+        bump('stickers', chatId)
+        return true
+      }
       log.debug(`没找到「${query}」这张表情，跳过`)
       return false
     }
@@ -711,7 +802,14 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
         log.warn('扩展模块改写回复出错：', error.message)
       }
     }
-    const r = parseReply(text)
+    const inGroup = chatId.startsWith('group:')
+    text = rewriteStickerTags(text)
+    const r = parseReply(text, {
+      split: cfg.reply?.split || 'natural',
+      max: Number(cfg.reply?.max) > 0 ? Math.min(4, Number(cfg.reply.max)) : (inGroup ? 2 : 3),
+      oneMax: Number(cfg.reply?.oneMax) > 0 ? Number(cfg.reply.oneMax) : 24,
+      chance: cfg.reply?.chance === undefined ? 1 : Number(cfg.reply.chance),
+    })
     if (r.silent) {
       log.info(`${chatId}：她选择不说话`)
       if (chatId.startsWith('group:')) groupEngaged.delete(chatId.slice(6)) // 不想聊就退出这个话题
@@ -742,7 +840,6 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       const all = texts.map((t) => t.value).join('，')
       if (all.length <= cfg.voice.autoMaxChars && Math.random() < cfg.voice.autoChance * mood().voice) items = [{ kind: 'voice', value: all }]
     }
-    const inGroup = chatId.startsWith('group:')
     // 群里别刷屏：一段最多 3 条
     if (inGroup && items.length > 3) items = items.slice(0, 3)
     // 按概率补一张表情（群里已经有两条以上就不补了）
@@ -765,21 +862,51 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     const explicit = items.some((item) => item.replyTo)
     const firstSendable = items.findIndex((item) => item.kind === 'text' || item.kind === 'voice' || item.kind === 'image' || (item.kind === 'sticker' && cfg.stickers.enabled && Boolean(item.value && typeof item.value === 'object' ? item.value : stickers.match(item.value))))
     const missedAt = [] // 写了 @ 却没对上群里人的名字
+    const bubbleSent = [] // 这一轮真发出去的气泡（记下来给「引用她其中一条」用）
+    let sentCount = 0 // 真发出去几条（一条都没有时兜底）
     for (let i = 0; i < items.length; i++) {
+      // 她还在往外发，对方已经又开口了：把剩下的话咽回去，等下一轮开头接着说（真人被打断就是这样）
+      const stuck = pending.get(chatId)
+      if (i > 0 && stuck?.waiting) {
+        const rest = items.slice(i).filter((x) => x.kind === 'text').map((x) => x.value)
+        if (rest.length) carryBubbles.set(chatId, [...(carryBubbles.get(chatId) || []), ...rest])
+        log.info(`${chatId}：对方又开口了，剩下 ${rest.length} 句留到下一轮`)
+        break
+      }
       const it = items[i]
+      if (it.kind === 'text') {
+        it.value = dropFaces(it.value, cfg.stickers?.faceChance, Math.random)
+        // 整条就只有一张小黄脸、又没中：这条不发了（兜底那句会补上）
+        if (!it.value.replace(/<[^>]*>/g, '').trim()) { log.debug(`${chatId}：这条只剩表情，跳过`); continue }
+      }
       const selected = it.replyTo ? refs[it.replyTo] : (!explicit && i === firstSendable ? opts.autoReply : null)
       const replyId = selected?.mid
       const userId = selected && opts.autoReply?.uid === selected.uid ? selected.uid : undefined
       if (it.replyTo && !replyId) log.debug(`${chatId}：引用的编号 ${it.replyTo} 对不上，正常发`)
-      if (it.kind === 'text') await sendText(chatId, it.value, replyId, missedAt, userId)
-      else if (it.kind === 'voice') {
-        if (cfg.voice.enabled) await sendVoice(chatId, it.value, replyId, userId)
-        else await sendText(chatId, it.value, replyId, missedAt, userId)
-      } else if (it.kind === 'sticker') await sendSticker(chatId, it.value, replyId, userId)
-      else if (it.kind === 'poke') { if (!opts.simulate) await pokeBack(chatId) }
-      else if (it.kind === 'image') await sendImage(chatId, it.value, replyId, userId)
+      if (it.kind === 'text') {
+        const r = await sendText(chatId, it.value, replyId, missedAt, userId)
+        if (r) sentCount += 1
+        if (r && r.message_id !== undefined && r.message_id !== null) bubbleSent.push({ mid: String(r.message_id), kind: 'text', text: it.value })
+      } else if (it.kind === 'voice') {
+        if (cfg.voice.enabled) { await sendVoice(chatId, it.value, replyId, userId); sentCount += 1 }
+        else {
+          const r = await sendText(chatId, it.value, replyId, missedAt, userId)
+          if (r && r.message_id !== undefined && r.message_id !== null) bubbleSent.push({ mid: String(r.message_id), kind: 'text', text: it.value })
+        }
+      } else if (it.kind === 'sticker') { if (await sendSticker(chatId, it.value, replyId, userId)) sentCount += 1 }
+      else if (it.kind === 'poke') { if (!opts.simulate) { await pokeBack(chatId); sentCount += 1 } }
+      else if (it.kind === 'image') { if (await sendImage(chatId, it.value, replyId, userId)) sentCount += 1 }
       if (i < items.length - 1 && !opts.simulate) await sleep(bubbleDelay(items[i + 1].kind === 'text' ? items[i + 1].value : '') * mood().delay)
     }
+    // 一整轮一句都没发出去（比如只有一张库里没有的表情）：至少回一句，别让她看起来把话吞了
+    if (!sentCount && !opts.simulate) {
+      const line = '嗯？'
+      log.info(`${chatId}：这一轮没有能发出去的内容，兜底回一句`)
+      const r = await sendText(chatId, line, undefined, [], undefined)
+      if (r) bubbleSent.push({ mid: r.message_id === undefined || r.message_id === null ? '' : String(r.message_id), kind: 'text', text: line })
+    }
+    recordBubbles(bubbleSent, chatId)
+    lastReplyAt.set(chatId, Date.now())
     if (opts.simulate) return items
     if (inGroup) {
       const gid = chatId.slice(6)
@@ -859,7 +986,11 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       if (chatId.startsWith('system:')) return // 已超时的后台轮次不能误发到 QQ
       if (!text) return release(chatId)
       // 发完再放开：发送期间来的消息也攒到下一段
-      deliver(chatId, text, { wantVoice, autoReply, userText: st.lastText || '', own: true }).catch((error) => log.warn('发送出错：', error.message)).finally(() => release(chatId))
+      deliver(chatId, text, { wantVoice, autoReply, userText: st.lastText || '', own: true })
+        // 她最后一句是问句的话，挂个定时器：过一会儿还没人回就补一句
+        .then(() => scheduleFollowUp(chatId, text))
+        .catch((error) => log.warn('发送出错：', error.message))
+        .finally(() => release(chatId))
     }
   }
 
@@ -914,7 +1045,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     const id = String(replyId || '')
     if (!id) return null
     if (quoteCache.has(id)) return quoteCache.get(id)
-    const out = { ok: false, who: '', uid: '', text: '', images: [], stickers: [], records: 0, isBot: false, at: 0 }
+    const out = { ok: false, mid: id, chatId: String(ctx?.chatId || ''), who: '', uid: '', text: '', images: [], stickers: [], records: 0, isBot: false, at: 0 }
     try {
       const m = await onebot.call('get_msg', { message_id: Number(id) || id }, { timeoutMs: 5000, retries: 0 })
       const sender = m?.sender || {}
@@ -945,6 +1076,38 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     return out
   }
 
+  // ---------- 一轮气泡 ----------
+  // 她一条回复常常拆成 2-3 条气泡发出去；对方只引用其中一条时，光凭那一条往往看不出她在说什么。
+  // 每发出去一条就记下「哪一轮的第几条」，被引用时把同一轮的其它气泡一起补上。
+  const BUBBLE_TURNS_KEEP = 40
+  const bubbleTurns = new Map() // turn → [{ mid, kind, text }]
+  const bubbleTurnOf = new Map() // chatId:message_id（和裸 id）→ { turn, i }
+  let bubbleTurnSeq = 0
+  function recordBubbles(list, chatId = '') {
+    if (!list.length) return
+    const turn = ++bubbleTurnSeq
+    bubbleTurns.set(turn, list.map((b) => ({ ...b })))
+    list.forEach((b, i) => {
+      const at = { turn, i }
+      bubbleTurnOf.set(String(b.mid), at)
+      if (chatId) bubbleTurnOf.set(`${chatId}:${b.mid}`, at)
+    })
+    while (bubbleTurns.size > BUBBLE_TURNS_KEEP) bubbleTurns.delete(bubbleTurns.keys().next().value)
+    while (bubbleTurnOf.size > BUBBLE_TURNS_KEEP * 12) bubbleTurnOf.delete(bubbleTurnOf.keys().next().value)
+  }
+  /** 被引用的这条如果是她自己发的，返回同一轮里其它几条的文字（最多 3 条）。 */
+  const bubbleSiblings = (q) => {
+    if (!q?.ok || !q.isBot) return []
+    const mid = String(q.mid || '')
+    const at = (q.chatId && bubbleTurnOf.get(`${q.chatId}:${mid}`)) || bubbleTurnOf.get(mid)
+    if (!at) return []
+    const turn = bubbleTurns.get(at.turn) || []
+    return turn
+      .filter((b) => String(b.mid) !== mid && b.kind === 'text' && b.text && !/^\[(表情|图片|语音)\]/.test(b.text))
+      .map((b) => b.text)
+      .slice(0, 3)
+  }
+
   const quoteWho = (q) => (q.isBot ? '你' : `${q.who || q.uid || '某人'}${q.uid ? `(${q.uid})` : ''}`)
   const quoteBody = (q) => {
     const body = String(q.text || '').replace(/\[(图片|表情包)\]/g, '').trim()
@@ -963,7 +1126,10 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       : q.images.length ? `，另有 ${q.images.length} 张图`
       : q.stickers.length ? `，另有 ${q.stickers.length} 个表情包`
       : q.records ? '，一条语音' : ''
-    return `（引用 ${quoteWho(q)} 的消息：「${quoteBody(q)}」${pics}）`
+    // 引用的是她自己那几条气泡之一：把她这一轮还说了什么补上，不然单看一句接不上
+    const sib = bubbleSiblings(q)
+    const more = sib.length ? `，你这一轮还说了：${sib.map((t) => `「${t}」`).join('')}` : ''
+    return `（引用 ${quoteWho(q)} 的消息：「${quoteBody(q)}」${pics}${more}）`
   }
   /** 引用里的图片 / 表情包：最多 take 张转成附件；模型看不了图就只留上面的文字说明。 */
   async function quoteImages(q, take = 2) {
@@ -1353,8 +1519,94 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
   const running = new Set() // chatId → 这一轮还在跑（模型 / 工具还没结束，turn/end 之前）；私聊此时新消息直接 steer 进去
   const isBusy = (chatId) => busy.has(chatId) && Date.now() - busy.get(chatId) < BUSY_MAX_MS
 
+  // ---------- 等多久才开口：跟着对方的节奏走，而不是固定等待 ----------
+  const recentMsgs = new Map() // chatId → 最近几条消息的时间戳
+  const lastReplyAt = new Map() // chatId → 她上一次说完的时间
+  const carryBubbles = new Map() // chatId → 被打断时没发出去的气泡
+  const BURST_WINDOW_MS = 3 * 60_000
+  const WHOLE_END = /[。！？!?…～~]\s*$/
+  function noteUserMsg(chatId) {
+    const now = Date.now()
+    const list = (recentMsgs.get(chatId) || []).filter((t) => now - t < BURST_WINDOW_MS)
+    list.push(now)
+    recentMsgs.set(chatId, list.slice(-8))
+  }
+  /** 最近几条消息的平均间隔（毫秒）；不够三条就返回 0。 */
+  function burstGapMs(chatId) {
+    const list = recentMsgs.get(chatId) || []
+    if (list.length < 3) return 0
+    const gaps = []
+    for (let i = 1; i < list.length; i++) gaps.push(list[i] - list[i - 1])
+    const last = gaps.slice(-3)
+    return last.reduce((a, b) => a + b, 0) / last.length
+  }
+  /**
+   * 她该等多久再开口。
+   * 对方在连发（间隔 < 4 秒）就按 1.6 倍间隔往后推，最多 max；
+   * 这句本身说完了（句末标点 / 去掉来源头还有 30 字）就不额外拖。
+   */
+  function adaptiveWait(chatId, base, max, lastText = '') {
+    const bare = String(lastText || '').replace(/^【[^】]*】[^：]*：/, '')
+    const whole = WHOLE_END.test(bare) || bare.length >= 30
+    const gap = burstGapMs(chatId)
+    if (whole || !gap || gap > 4000) return Math.min(base, max)
+    return Math.max(base, Math.min(max, Math.round(gap * 1.6)))
+  }
+
+  // ---------- 她问完没人接：过一会儿补一句（像真人说的「人呢」「说嘛」） ----------
+  const followUpTimers = new Map() // chatId → timer
+  const followUpCounts = new Map() // chatId → 这一轮已经补过几次
+  const lastChatOf = new Map() // chatId → 最近的聊天对象（追问时还要用它开一轮）
+  const FOLLOW_UP_PROMPT = '（你上一句问了个问题，对方到现在还没回。想催就随口补一句很短的话，别重复刚才的问题，也别连着问第二遍；不想催就只回一个你觉得自然的短句。）'
+
+  function cancelFollowUp(chatId) {
+    const t = followUpTimers.get(chatId)
+    if (t) clearTimeout(t)
+    followUpTimers.delete(chatId)
+    followUpCounts.delete(chatId)
+  }
+
+  /** 她说完话之后叫：结尾是问句就挂一个定时器，到时候没人回就补一句。 */
+  function scheduleFollowUp(chatId, text) {
+    const cfg = getConfig().followUp || {}
+    const chat = lastChatOf.get(chatId)
+    // 只在私聊里追问：群里问一句没人接很常见，追着催会显得怪
+    if (!chat || chat.kind !== 'private') return
+    if (!followUpDue({ cfg, lastText: text, count: followUpCounts.get(chatId) || 0 })) return
+    const old = followUpTimers.get(chatId)
+    if (old) clearTimeout(old)
+    followUpCounts.set(chatId, (followUpCounts.get(chatId) || 0) + 1)
+    const since = Date.now()
+    const timer = setTimeout(() => {
+      runFollowUp(chatId, chat, since).catch((error) => log.warn('追问出错：', error.message))
+    }, Math.max(15, Number(cfg.waitSec) || 60) * 1000)
+    timer.unref?.()
+    followUpTimers.set(chatId, timer)
+  }
+
+  async function runFollowUp(chatId, chat, since) {
+    followUpTimers.delete(chatId)
+    const cfg = getConfig()
+    if (!cfg.followUp?.enabled || !cfg.enabled) return
+    if (isMuted?.(chatId)) return
+    if (busy.has(chatId) || running.has(chatId) || pending.has(chatId)) return
+    const recent = recentMsgs.get(chatId) || []
+    if (recent.some((t) => t > since)) return // 你说过话了，不用催
+    log.info(`${chatId}：问完 ${cfg.followUp.waitSec} 秒没人回，补一句`)
+    busy.set(chatId, Date.now())
+    try {
+      const sender = chat.kind === 'group' ? String([...(pending.get(chatId)?.senders || [])][0] || cfg.ownerQQ || '') : String(cfg.ownerQQ || '')
+      await pushToSession(chat, [{ type: 'text', text: FOLLOW_UP_PROMPT }], sender, {})
+    } catch (error) {
+      release(chatId)
+      log.warn('追问没发出去：', error.message)
+    }
+  }
+
   function enqueue(chat, content, senderId, wantVoice, mode = 'must', extra = {}) {
     const m = getConfig().merge
+    cancelFollowUp(chat.chatId)
+    lastChatOf.set(chat.chatId, chat)
     const p = pending.get(chat.chatId) || { chat, texts: [], images: [], senders: new Set(), wantVoice: false, timer: null, firstAt: Date.now(), mode, count: 0 }
     p.chat = chat
     p.count++
@@ -1371,8 +1623,11 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     if (!m.enabled) return flush(chat.chatId)
     // 群里大家一来一回说得慢，多等一会儿把一段话攒齐
     const group = chat.kind === 'group'
-    const wait = (group ? m.groupWaitSec : m.waitSec) * 1000
+    const base = (group ? m.groupWaitSec : m.waitSec) * 1000
     const max = (group ? m.groupMaxSec : m.maxSec) * 1000
+    const lastText = content.filter((c) => c.type === 'text').map((c) => c.text).pop() || ''
+    noteUserMsg(chat.chatId)
+    const wait = adaptiveWait(chat.chatId, base, max, lastText)
     const left = Math.max(0, max - (Date.now() - p.firstAt))
     p.timer = setTimeout(() => flush(chat.chatId), Math.min(wait, left))
     p.timer.unref?.()
@@ -1406,6 +1661,9 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     }
     pending.delete(chatId)
     if (p.count > 1) log.info(`${chatId}：合并了 ${p.count} 条消息一起交给她`)
+    const carried = carryBubbles.get(chatId) || []
+    if (carried.length) carryBubbles.delete(chatId)
+    const carryNote = carried.length ? `（你上一轮没说完的话：${carried.join(' / ')}。想接着说完就接着说，不用重头再讲一遍）\n` : ''
     let content
     if (p.chat.kind === 'group') {
       const gid = p.chat.groupId
@@ -1416,12 +1674,15 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       }
       const gp = await groupPrompt(p.chat, p.mode, Math.max(0, 4 - p.images.length))
       if (gp.speakers.length) lastSpeaker.set(chatId, [...p.senders].pop() || gp.speakers.at(-1))
-      content = [{ type: 'text', text: gp.text + hint }, ...p.images, ...(gp.images || [])]
+      content = [{ type: 'text', text: carryNote + gp.text + hint }, ...p.images, ...(gp.images || [])]
       p.query = gp.query
       p.speakers = gp.speakers
       p.autoReply = gp.autoReply
     } else {
-      content = [{ type: 'text', text: p.texts.join('\n') + hint }, ...p.images]
+      // 她刚说完（45 秒内）对方接着说，是同一段对话：给她一句承接，别当新话题从头回
+      const carried = lastReplyAt.get(chatId) && Date.now() - lastReplyAt.get(chatId) < 45_000
+      const carry = carried ? '（你刚回过 ta，ta 接着说的，还是同一段对话）\n' : ''
+      content = [{ type: 'text', text: carryNote + carry + p.texts.join('\n') + hint }, ...p.images]
     }
     busy.set(chatId, Date.now())
     try {

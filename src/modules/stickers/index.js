@@ -2,7 +2,7 @@
 // 导出的就是表情库（createStickerStore 的返回值），聊天中枢发表情、偷表情都找它。
 
 import { readFileSync, existsSync } from 'node:fs'
-import { createStickerStore, stickerPath } from '../../features/stickers.js'
+import { createStickerStore, stickerPath, DEFAULT_TAGS } from '../../features/stickers.js'
 import { defineTool, int, str } from '../../tools/tools.js'
 import { fetchImage, segmentBytes } from '../../core/net.js'
 import { resolvePainting } from '../../features/paintings.js'
@@ -182,7 +182,7 @@ export default {
       return tools
     })
 
-    api.route('/stickers', async () => ({ ok: true, items: store.library().items.slice().reverse() }))
+    api.route('/stickers', async () => ({ ok: true, items: store.library().items.slice().reverse(), tags: DEFAULT_TAGS }))
     api.route('/sticker/image', async (req, res) => {
       const it = store.library().items.find((i) => i.md5 === http.query(req).md5)
       if (!it || !existsSync(stickerPath(it))) return http.send(res, 404, '')
@@ -198,7 +198,22 @@ export default {
       return store.remove(b.md5, { fromQQ: b.fromQQ !== false })
     })
     api.route('/sticker/import-qq', async () => store.importFromQQ())
+    api.route('/sticker/import-dir', async (req) => {
+      const b = await http.body(req)
+      return store.importFromDir(b.path)
+    })
+    // 按图重新起名 / 打标：md5 传一张，all=true 分批跑（offset 往下推）
+    api.route('/sticker/recaption', async (req) => {
+      const b = await http.body(req)
+      return store.recaption({ md5: b.md5 || '', all: !!b.all, offset: Number(b.offset) || 0, limit: Number(b.limit) || 8 })
+    })
     api.rule(() => '- 主人让你存某个表情（「存一下」「导入这个表情」）时用 qq_save_sticker；让你把 QQ 收藏里的表情导进来时用 qq_import_qq_stickers。别人让你存，不用理。')
+    // 提示词里给她「库里真有的标签」：以前只给了 8 个写死的，她就会编「笑哭」这种库里没有的名字
+    api.rule(() => {
+      const tags = store.popularTags(12)
+      if (!tags.length) return ''
+      return `- 你表情库里现在的标签有：${tags.join('、')}。<sticker:…> 里只写这些（或你确实记得的表情名字），写别的会发不出去；QQ 自带的小黄脸要用 <face:…>，别写成 <sticker:…>。`
+    })
     api.route('/sticker/upload', async (req) => {
       const b = await http.body(req)
       const buf = Buffer.from(String(b.data || '').replace(/^data:[^,]+,/, ''), 'base64')
