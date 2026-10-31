@@ -8,10 +8,26 @@ export function dshHome() {
   return process.env.DSH_HOME || join(homedir(), '.dsh')
 }
 
-/** 插件所有数据都放这儿：~/.dsh/plugins-data/aurabot/ */
+/** 插件所有数据都放这儿：~/.dsh/plugins-data/halobot/ */
+const LEGACY_DIR = 'aurabot'
+const BASE_CACHE = { dir: '' }
+function baseDir() {
+  const env = process.env.HALOBOT_DATA_DIR || process.env.AURABOT_DATA_DIR
+  if (env) return env
+  if (BASE_CACHE.dir) return BASE_CACHE.dir
+  const root = join(dshHome(), 'plugins-data')
+  const now = join(root, 'halobot')
+  const old = join(root, LEGACY_DIR)
+  try {
+    // 从旧版（Aurabot）改名过来的：数据整个搬过去，配置/记忆/表情库都还在
+    if (!existsSync(now) && existsSync(old)) renameSync(old, now)
+  } catch (error) {}
+  BASE_CACHE.dir = now
+  return now
+}
+
 export function dataDir(...parts) {
-  const base = process.env.AURABOT_DATA_DIR || join(dshHome(), 'plugins-data', 'aurabot')
-  return join(base, ...parts)
+  return join(baseDir(), ...parts)
 }
 
 export function ensureDir(p) {

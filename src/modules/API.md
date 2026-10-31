@@ -1,9 +1,9 @@
-# Aurabot 扩展接口说明（插件 v{{VERSION}} · 扩展接口 v{{API}}）
+# Halobot 扩展接口说明（插件 v{{VERSION}} · 扩展接口 v{{API}}）
 
 > 这个文件由插件维护，每次启动都会更新成当前版本，**别改它**（改了也会被覆盖）。
 > 你自己写的模块放在和它同一个文件夹（`modules/`）里，插件升级不会动。
 
-大肥鱼的每项本事都是一个**模块**：表情包、语音、心情、记忆、空间日记、B 站、翻唱、生图……
+哈洛的每项本事都是一个**模块**：表情包、语音、心情、记忆、空间日记、B 站、翻唱、生图……
 你可以：
 
 - **加新模块**：给她新本事（查天气、接智能家居、关键词回复、对接自己的服务……）
@@ -31,7 +31,7 @@
 `modules/hello/index.mjs`：
 
 ```js
-/** @type {import('../aurabot').AurabotModule} */   // 有这一行，编辑器就有补全（类型在 modules/aurabot.d.ts）
+/** @type {import('../halobot').HalobotModule} */   // 有这一行，编辑器就有补全（类型在 modules/halobot.d.ts）
 export default {
   id: 'hello',          // 和文件夹名一样
   name: '打招呼',
@@ -51,7 +51,7 @@ export default {
 - 入口文件叫 `index.mjs`（或 `index.js`，但要是 ES 模块写法）
 - 文件夹名以 `_` 或 `.` 开头的不加载（可以拿来放草稿）
 - **可以拆成多个文件**：`import { x } from './util.mjs'`、子文件夹都行。模块文件夹里**任何文件**改了、加了、删了，几秒内整个模块重新加载
-  （插件每次把文件夹拍一份快照到 `modules/<id>/.aurabot-cache/` 再加载；这个文件夹别动，也别往里写东西）
+  （插件每次把文件夹拍一份快照到 `modules/<id>/.halobot-cache/` 再加载；这个文件夹别动，也别往里写东西）
 - 读模块自带的数据文件用 `join(api.dir, 'data.json')`（`api.dir` 是模块文件夹；`import.meta.url` 指向的是快照）。要写的数据放 `api.dataDir()`
 
 ### 用 npm 包
@@ -59,7 +59,7 @@ export default {
 在模块文件夹里装，和普通 Node 项目一样：
 
 ```powershell
-cd "$env:USERPROFILE\.dsh\plugins-data\aurabot\modules\weather"
+cd "$env:USERPROFILE\.dsh\plugins-data\halobot\modules\weather"
 npm init -y
 npm install cheerio
 ```
@@ -100,12 +100,12 @@ export default {
 
 | | |
 |---|---|
-| `api.config()` | 插件的整份配置（只读，看 `~/.dsh/plugins-data/aurabot/config.json`） |
+| `api.config()` | 插件的整份配置（只读，看 `~/.dsh/plugins-data/halobot/config.json`） |
 | `api.setConfig(patch)` | 改配置：传对象就深合并，传函数 `(cfg) => 新cfg` 就整个换 |
 | `api.settings()` | 这个模块的设置（`defaults` + 面板里填的） |
 | `api.saveSettings(patch)` | 改这个模块的设置 |
 | `api.dir` | 模块自己的文件夹（读自带的数据文件用） |
-| `api.dataDir(...路径)` | 这个模块专用的数据文件夹（`plugins-data/aurabot/modules-data/<id>/`），自动建好 |
+| `api.dataDir(...路径)` | 这个模块专用的数据文件夹（`plugins-data/halobot/modules-data/<id>/`），自动建好 |
 | `api.log.info / warn / error / debug(...)` | 写日志（面板「日志」页能看，自动脱敏） |
 
 **发消息**（总开关、试运行照常管着：关着 / 试运行时只写日志）
@@ -147,7 +147,7 @@ export default {
 | `api.command({ name, aliases, desc, run(arg, msg) })` | 主人在 QQ 里发 `/name 参数` 时调用，`run` 返回的文字直接回到**发命令的那个聊天**（群里发就回群里）。名字可以是中文（`name: '天气'`），中文命令后面可以不加空格（`/天气北京`）；`arg` 是命令名后面剩下的全部文字，已经去掉首尾空格。**只认主人**：别人发 `/xxx` 当普通消息处理。和内置命令同名时你的优先 |
 | `api.every(毫秒, fn, 名字?)` | 定时任务（名字用在出错日志里） |
 | `api.later(毫秒, fn)` | 过一会儿做一次 |
-| `api.route('/路径', async (req, res) => 返回值)` | 加一个网页接口：地址是 `/aurabot/api/ext/<id>/路径`；返回对象就当 JSON 回；要自己回（比如图片）就用 `api.core.http.send(res, 200, buf, 'image/png')` |
+| `api.route('/路径', async (req, res) => 返回值)` | 加一个网页接口：地址是 `/halobot/api/ext/<id>/路径`；返回对象就当 JSON 回；要自己回（比如图片）就用 `api.core.http.send(res, 200, buf, 'image/png')` |
 | `api.onDispose(fn)` | 模块停下时要做的收尾 |
 
 **别的模块和插件内部**（全开放）
@@ -207,7 +207,7 @@ export default {
 ```js
 api.on('group/decide', (d, { msg }) => (msg.mentioned ? { reply: true, mode: 'must' } : { reply: false, reason: '只在被 @ 时说话' }))
 api.on('model', (sel, chat) => (chat.kind === 'private' ? { provider: 'deepseek', model: 'deepseek-chat' } : undefined))
-api.on('reply/items', (items) => [...items, { kind: 'text', value: '—— 大肥鱼' }])
+api.on('reply/items', (items) => [...items, { kind: 'text', value: '—— 哈洛' }])
 ```
 
 **只看不改的**：
@@ -331,7 +331,7 @@ return function Panel({ settings, save, toast }) {
 3. 改，保存。几秒内面板显示「用的是你的版本」
 4. 想临时用回内置的：那一行的「用内置的」开关；想彻底不要了：删掉文件夹
 
-复制出来的文件里，原来指向插件其他文件的 `import`，改成了 `const { … } = __lib('core/store.js')` 的写法（`globalThis.aurabot.lib`），所以放在 `modules/` 里也能找到插件的源码。
+复制出来的文件里，原来指向插件其他文件的 `import`，改成了 `const { … } = __lib('core/store.js')` 的写法（`globalThis.halobot.lib`），所以放在 `modules/` 里也能找到插件的源码。
 
 **你的版本加载失败时，会先自动用回内置的**（面板上能看到报错），所以写坏了不会让她突然少一项本事。
 

@@ -35,7 +35,7 @@ export async function shouldUseCnMirror(mode, fetchImpl = fetch) {
   const times = await Promise.all([probe('https://pypi.org/simple/pip/'), probe(TORCH_INDEX + '/torch/'), probe('https://github.com/')])
   return times.some((t) => t > 2500)
 }
-const LEGACY_ROOT = 'C:\\Aurabot\\rvc'
+const LEGACY_ROOT = 'C:\\Halobot\\rvc'
 
 // RVC 推理要的预训练文件（Applio 放在 HuggingFace 上）：[远端相对路径, 本地相对 Applio 的路径]
 const PREREQS = [
@@ -144,9 +144,9 @@ export function dirSize(dir) {
   return total
 }
 
-/** 翻唱环境的根目录：老安装沿用 C:\Aurabot\rvc，新安装放用户目录下。 */
+/** 翻唱环境的根目录：老安装沿用 C:\Halobot\rvc，新安装放用户目录下。 */
 export function defaultRoot() {
-  return existsSync(LEGACY_ROOT) ? LEGACY_ROOT : join(homedir(), 'Aurabot', 'rvc')
+  return existsSync(LEGACY_ROOT) ? LEGACY_ROOT : join(homedir(), 'Halobot', 'rvc')
 }
 
 /**
@@ -222,7 +222,7 @@ export function listDrives() {
       const s = statfsSync(d)
       const gb = (n) => Math.round((Number(n) * Number(s.bsize)) / 1024 ** 3 * 10) / 10
       if (!s.blocks) continue
-      out.push({ drive: `${L}:`, root: `${L}:\\Aurabot\\rvc`, freeGB: gb(s.bavail), totalGB: gb(s.blocks) })
+      out.push({ drive: `${L}:`, root: `${L}:\\Halobot\\rvc`, freeGB: gb(s.bavail), totalGB: gb(s.blocks) })
     } catch (error) {}
   }
   return out
@@ -231,7 +231,7 @@ export function listDrives() {
 export function checkRoot(path) {
   const p = String(path || '').trim()
   if (!p) return { ok: true, path: '', message: '', warn: '', freeGB: null }
-  if (!isAbsolute(p) || !/^[A-Za-z]:\\/.test(p.replace(/\//g, '\\'))) return { ok: false, path: p, message: '要写完整路径，比如 D:\\Aurabot\\rvc', warn: '', freeGB: null }
+  if (!isAbsolute(p) || !/^[A-Za-z]:\\/.test(p.replace(/\//g, '\\'))) return { ok: false, path: p, message: '要写完整路径，比如 D:\\Halobot\\rvc', warn: '', freeGB: null }
   const warn = /[^\x21-\x7e]/.test(p) ? '路径里有中文或空格，个别工具可能出问题，最好换成全英文、不带空格的路径' : ''
   let freeGB = null
   try {
@@ -564,7 +564,7 @@ export function createSongStudio({ getConfig, log, sendVoiceFile, sendText, onSu
 
   /** 准备 uv（装 Python 和各种包的工具）：电脑上有就用，没有就下一个放进安装目录。 */
   async function ensureUv(note) {
-    if (process.env.AURABOT_UV) return process.env.AURABOT_UV
+    if (process.env.HALOBOT_UV) return process.env.HALOBOT_UV
     const p = P()
     const local = join(p.bin, 'uv.exe')
     if (existsSync(local)) return local

@@ -1,4 +1,4 @@
-// 目的机制（主动搭话引擎）的 Aurabot 接线层。
+// 目的机制（主动搭话引擎）的 Halobot 接线层。
 //
 // 引擎本体在 ./engine.js（逻辑移植自 Mieksido/surfcore 的 purpose-engine，MIT，
 // 署名见 THIRD-PARTY-NOTICES.md；零 import 零 I/O 的纯函数）。
@@ -21,8 +21,8 @@ import {
 } from './engine.js'
 
 const MINUTE = 60_000
-// 她的自称：用于聊天流水标注与「名字：」前缀清洗（与 Aurabot 的桌宠形象同名）。
-const ROLE = '大肥鱼'
+// 她的自称：用于聊天流水标注与「名字：」前缀清洗（与 Halobot 的桌宠形象同名）。
+const ROLE = '哈洛'
 // mood 模块靠 userText 的「【系统提醒」前缀把主动回合判成 origin='speak-up'（mood/index.js 的判定），
 // deliver 路径本身没有 userText，这里补一个同款前缀，保住心情判定链路。
 const MOOD_PREFIX = '【系统提醒，不是主人说的话】（她主动找你）'
@@ -35,7 +35,7 @@ const clampInt = (v, d, lo, hi) => {
 }
 
 /**
- * 把 Aurabot 配置映射成引擎配置。
+ * 把 Halobot 配置映射成引擎配置。
  * 醒着窗口（speakUp.awakeFrom/awakeTo）是唯一真相，引擎的安静时段由它派生；
  * 调参走本模块自己的设置面 cfg.ext.purpose.*（模块默认关：ext.purpose.enabled）。
  */
@@ -66,7 +66,7 @@ export function purposeConfig(cfg = {}) {
   })
 }
 
-/** 模型回包清洗：去掉备忘段、引号、「大肥鱼：」前缀；空/沉默返回 ''。 */
+/** 模型回包清洗：去掉备忘段、引号、「哈洛：」前缀；空/沉默返回 ''。 */
 export function cleanReply(raw) {
   let s = String(raw ?? '')
   const cut = /(^|\n)\s*[【\[]\s*(目的|需求|情绪|类型|状态|待续)\s*[】\]]/.exec(s)
@@ -117,7 +117,7 @@ export function createPurpose({ getConfig, setConfig, hub, log, isMuted, mood, m
           title: '',
           text: String(m.text),
           importance: Math.round((Number(m.importance) || 0) * 100),
-          emotional: 0, // aurabot 记忆没有情绪分字段，留 0
+          emotional: 0, // halobot 记忆没有情绪分字段，留 0
           lastSeenAt: m.lastHit || m.at,
           createdAt: m.at,
           pinned: false, anchor: false, isInitial: false,
@@ -190,7 +190,7 @@ export function createPurpose({ getConfig, setConfig, hub, log, isMuted, mood, m
 
   function promptFor(cfg, config, selected, ctx, state, now = Date.now()) {
     return buildPurposePrompt({
-      now, config, mode: 'auto', // 模型直接输出那句话（Aurabot 没有 QQ 发送工具）
+      now, config, mode: 'auto', // 模型直接输出那句话（Halobot 没有 QQ 发送工具）
       ownerUin: cfg.ownerQQ,
       ownerName: cfg.ownerName || '主人',
       contextBlocks: [],
@@ -372,7 +372,7 @@ export function createPurpose({ getConfig, setConfig, hub, log, isMuted, mood, m
     if (await maybeNudge(cfg, state, now)) return
     const env = {
       enabled: true, modeOk: true, dshReady: true, paused: false, ownerAllowed: true,
-      busy: false, friendOk: true, budgetBlocked: false, // Aurabot 无 token 预算/好友探测服务，恒可用（留 env 位）
+      busy: false, friendOk: true, budgetBlocked: false, // Halobot 无 token 预算/好友探测服务，恒可用（留 env 位）
       ownerIdleMs: now - lastPrivateAt(cfg),
     }
     const verdict = evaluatePurposeTick({ now, config, state, env })

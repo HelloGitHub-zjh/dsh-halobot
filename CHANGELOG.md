@@ -1,3 +1,18 @@
+## 3.0.0 · 正式更名 Halobot（哈洛）
+
+这一版只做一件事：把整条身份线统一成 **Halobot / 哈洛**，不再出现 Aurabot、大肥鱼、dafeiyu 这些旧名字。
+
+- **包名**：`dsh-dafeiyu` → `dsh-halobot`（仓库 `HelloGitHub-zjh/dsh-halobot`）。
+- **插件入口 / 实例 id**：`aurabot` → `halobot`；面板 id、侧栏标签、宿主导出名 `name = 'halobot'` 一起换。
+- **接口前缀**：`/aurabot/api` → `/halobot/api`。
+- **agent preset**：`aurabot-private` / `aurabot-private-long` / `aurabot-social` → `halobot-private` / `halobot-private-long` / `halobot-social`，preset id 也一起改；提示词变量 `{{aurabot_persona}}` 等 → `{{halobot_persona}}`。
+- **数据目录**：`~/.dsh/plugins-data/aurabot/` → `~/.dsh/plugins-data/halobot/`。**首次启动会自动把老目录整个搬过去**（新目录不存在时才搬），配置、记忆、流水、表情库、人格都跟着走；环境变量 `AURABOT_DATA_DIR` 仍然认，新名字是 `HALOBOT_DATA_DIR`。
+- **人格**：`personas/dafeiyu.md` → `personas/halobot.md`，角色名「大肥鱼」→「哈洛」；老数据目录里的人格文件会自动改名并把旧名字替换掉，`persona.current` 读配置时自动从 `dafeiyu` 迁到 `halobot`。
+- **群唤醒词**：默认改成 `['哈洛']`，老配置里的「大肥鱼」「肥鱼」读进来自动换成「哈洛」。
+- **日志 / 缓存 / 备份格式**：`halobot-YYYY-MM-DD.log`、`.halobot-cache/`、`halobot-backup` 包格式；导入时仍兼容旧的 `aurabot-backup` / `dafeiyu-backup` 包。
+- **模块 API**：`globalThis.aurabot` → `globalThis.halobot`，类型文件 `src/modules/halobot.d.ts`，类型名 `HalobotModule`；如果有自己写的模块引用了旧全局变量，需要跟着改。
+- **文档**：README 重写；用户手册里的「桌宠」章节删除（桌宠模块在 2.x 已移除）。
+
 # 更新记录
 
 ## 2.0.0 · 独立维护起点

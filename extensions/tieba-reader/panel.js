@@ -6,7 +6,7 @@ return function Panel({ settings, draftSettings, setSettings, toast }) {
   const cfg = draftSettings || settings;
   const dirty = Object.keys({ ...settings, ...cfg }).some(key => JSON.stringify(settings[key]) !== JSON.stringify(cfg[key]));
   const editable = typeof setSettings === 'function';
-  const set = (key, value) => { if (editable) setSettings({ [key]: value }); else toast('请更新 Aurabot 面板以支持底部统一保存。'); };
+  const set = (key, value) => { if (editable) setSettings({ [key]: value }); else toast('请更新 Halobot 面板以支持底部统一保存。'); };
   const enabled = cfg.enabled !== false;
   const loginPending = Boolean(state?.browser?.loginPending);
   const account = state?.browser?.account;
@@ -25,7 +25,7 @@ return function Panel({ settings, draftSettings, setSettings, toast }) {
   const number = (key, min, max) => h('input', { className: 'ab-input', type: 'number', min, max, step: 1, value: cfg[key] ?? '', onChange: e => set(key, e.target.value === '' ? '' : Number(e.target.value)), onBlur: e => set(key, Math.min(max, Math.max(min, Math.round(Number(e.target.value) || min)))), style: { width: 100 } });
   const locked = Boolean(busy);
   return h('div', { className: 'ab-grid' },
-    !editable ? h('p', { className: 'ab-note' }, '当前 Aurabot 面板缺少草稿接口，请更新面板后使用底部统一保存。') : null,
+    !editable ? h('p', { className: 'ab-note' }, '当前 Halobot 面板缺少草稿接口，请更新面板后使用底部统一保存。') : null,
     h(ui.Card, { title: '贴吧登录', right: h(ui.Switch, { on: enabled, disabled: !editable, title: '贴吧功能总开关；修改后点击底部保存设置', onChange: value => set('enabled', value) }),
       desc: '右上角为贴吧功能总开关，关闭后停止读帖和定时浏览，保留登录信息。自动检测已有内置浏览器，无需手动配置。' },
       h(ui.Row, { label: '登录状态', hint: '显示上次检查结果，不是实时在线状态；点击检查登录可重新确认。' }, h('span', { className: 'ab-note' }, accountMessage,

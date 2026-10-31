@@ -52,7 +52,7 @@ export default {
 
     api.route('/voice/test', async (req) => {
       const b = await http.body(req)
-      const { file, engine } = await speak(String(b.text || '你好呀，我是大肥鱼'))
+      const { file, engine } = await speak(String(b.text || '你好呀，我是哈洛'))
       const buf = readFileSync(file)
       return { ok: true, engine, mime: file.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg', data: buf.toString('base64') }
     })

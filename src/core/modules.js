@@ -24,7 +24,7 @@ const BUILTIN_DIR = join(SRC, 'modules')
 const ID_RE = /^[a-z][a-z0-9-]{1,39}$/
 const ENTRY = ['index.mjs', 'index.js']
 const DOC = 'API.md'
-const TYPES = 'aurabot.d.ts'
+const TYPES = 'halobot.d.ts'
 
 export const userDir = () => dataDir('modules')
 
@@ -56,8 +56,8 @@ export function lib(key) {
 export const libKeys = () => [...libCache.keys()].sort()
 
 // 加载自己写的模块时跳过的目录：依赖、加载快照、版本库
-const SKIP_DIRS = new Set(['node_modules', '.aurabot-cache', '.git'])
-const SNAP = '.aurabot-cache'
+const SKIP_DIRS = new Set(['node_modules', '.halobot-cache', '.git'])
+const SNAP = '.halobot-cache'
 
 /** 模块文件夹里所有文件（含子目录，不含依赖和快照）。 */
 function filesOf(dir, base = dir, out = []) {
@@ -141,9 +141,9 @@ export function rewriteImports(code, fromKey, keep = new Set()) {
   // 插件里带的数据文件（new URL('./x.py', import.meta.url)）：指回插件目录
   out = out.replace(/new URL\(\s*['"](\.\.?\/[^'"]*)['"]\s*,\s*import\.meta\.url\s*\)/g, (m, spec) => {
     const key = target(spec)
-    return key ? `new URL('${key}', globalThis.aurabot.src)` : m
+    return key ? `new URL('${key}', globalThis.halobot.src)` : m
   })
-  if (out !== code) out = "const __lib = globalThis.aurabot.lib // 插件内部源码（复制出来后靠它找到插件里的文件）\n" + out
+  if (out !== code) out = "const __lib = globalThis.halobot.lib // 插件内部源码（复制出来后靠它找到插件里的文件）\n" + out
   return out
 }
 
@@ -247,7 +247,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
         return track(() => clearTimeout(t))
       },
       route: (path, handler) => {
-        const full = '/aurabot/api' + prefix + (String(path).startsWith('/') ? path : '/' + path)
+        const full = '/halobot/api' + prefix + (String(path).startsWith('/') ? path : '/' + path)
         const cur = routes.get(full)
         if (cur && cur.id !== id && live.has(cur.id)) throw new Error(`接口 ${full} 已经被模块「${cur.id}」占了`)
         routes.set(full, { id, handler: guard(`接口 ${path}`, handler) })
@@ -357,7 +357,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
 
   /** 加载一个自己写的模块（按修改时间重新 import，改了就是新的）。 */
   /**
-   * 加载自己写的模块：先把整个文件夹拍一份快照（modules/<id>/.aurabot-cache/<版本戳>/）再加载快照。
+   * 加载自己写的模块：先把整个文件夹拍一份快照（modules/<id>/.halobot-cache/<版本戳>/）再加载快照。
    * Node 会缓存加载过的文件，快照路径每次不同，所以改了模块里任何一个文件都会重新加载；
    * 快照在模块文件夹里面，模块自己 npm install 的依赖（modules/<id>/node_modules）照样找得到。
    */
@@ -416,7 +416,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
     for (const def of builtins) if (wanted(def.id, users) === 'builtin') startSync(def)
     return (async () => {
       await loadLib()
-      globalThis.aurabot = { lib, src: pathToFileURL(SRC).href, version, apiVersion: API_VERSION, modules: publicHandle }
+      globalThis.halobot = { lib, src: pathToFileURL(SRC).href, version, apiVersion: API_VERSION, modules: publicHandle }
       installDocs()
       await sync()
       watching = setInterval(() => { sync().catch((error) => log.warn('检查模块变化出错：', error.message)) }, 3000)
@@ -595,7 +595,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
         errors: rec ? rec.errors : [],
         tools: rec ? toolNames(rec) : [],
         commands: rec ? rec.commands.map((c) => c.name) : [],
-        routes: [...routes].filter(([, r]) => r.id === id).map(([p]) => p.replace('/aurabot/api', '')),
+        routes: [...routes].filter(([, r]) => r.id === id).map(([p]) => p.replace('/halobot/api', '')),
         settings: rec?.source === 'user' || (!rec && u) ? (def.settings || []) : [],
         defaults: def.defaults || {},
         panel: Boolean(rec?.source === 'user' && def.panel),
@@ -656,7 +656,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
         const spec = relFrom.startsWith('.') ? relFrom : './' + relFrom
         code = code.split(`'${spec}'`).join(`'./${n2}'`)
       }
-      writeFileSync(join(dir, name), `// 从 Aurabot v${version} 的内置模块「${b.name}」复制出来的，改了就替换内置的。\n// 原文件：src/${key}\n` + code, 'utf8')
+      writeFileSync(join(dir, name), `// 从 Halobot v${version} 的内置模块「${b.name}」复制出来的，改了就替换内置的。\n// 原文件：src/${key}\n` + code, 'utf8')
     }
     setConfig({ ...getConfig(), modules: { ...getConfig().modules, [id]: { ...modCfg(id), useBuiltin: false, forkedFrom: b.version || version } } })
     installDocs()
@@ -670,7 +670,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
       const doc = readFileSync(join(BUILTIN_DIR, DOC), 'utf8').replaceAll('{{VERSION}}', version).replaceAll('{{API}}', String(API_VERSION)).replace('{{LIB}}', libKeys().map((k) => '- `' + k + '`').join('\n'))
       const dest = join(userDir(), DOC)
       if (!existsSync(dest) || readFileSync(dest, 'utf8') !== doc) writeFileSync(dest, doc, 'utf8')
-      // 类型提示：模块开头写 /** @type {import('../aurabot').AurabotModule} */，编辑器就有补全
+      // 类型提示：模块开头写 /** @type {import('../halobot').HalobotModule} */，编辑器就有补全
       const types = readFileSync(join(BUILTIN_DIR, TYPES), 'utf8')
       const tdest = join(userDir(), TYPES)
       if (!existsSync(tdest) || readFileSync(tdest, 'utf8') !== types) writeFileSync(tdest, types, 'utf8')
@@ -679,7 +679,7 @@ export function createModules({ ctx, core, getConfig, setConfig, logger, version
 
   function promptFor(id) {
     const dir = id ? join(userDir(), id) : userDir()
-    return `帮我修改 Aurabot（大肥鱼 QQ 插件）的扩展模块：${dir}\n`
+    return `帮我修改 Halobot（哈洛 QQ 插件）的扩展模块：${dir}\n`
       + `先完整读一遍「${join(userDir(), DOC)}」了解模块怎么写、能用哪些接口，再按我的要求改：\n`
       + '【这里写你想让她多会什么、改成什么样】\n'
       + `只改 ${userDir()} 里的文件，不要动插件本身的代码；改完保存会自动重新加载，到面板「扩展」页看有没有报错，再告诉我怎么试。`

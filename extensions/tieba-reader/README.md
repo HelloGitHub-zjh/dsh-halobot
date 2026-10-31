@@ -1,10 +1,10 @@
 # 逛贴吧（只读）
 
-Aurabot 用户扩展。提供 `tieba_search`、`tieba_browse`、`tieba_read` 和 `tieba_reader_status`；支持群聊、私聊，以及配置多个贴吧定时浏览。没有自动发帖、回帖或点赞接口。自动浏览默认关闭，分享只发到主人私聊。
+Halobot 用户扩展。提供 `tieba_search`、`tieba_browse`、`tieba_read` 和 `tieba_reader_status`；支持群聊、私聊，以及配置多个贴吧定时浏览。没有自动发帖、回帖或点赞接口。自动浏览默认关闭，分享只发到主人私聊。
 
 ## 安装
 
-需要 Node.js 22 或更高版本，以及支持用户模块 API 1 和自定义面板草稿接口的 Aurabot（本 PR 包含所需客户端兼容增强）。从本 repo 的 `extensions/tieba-reader` 目录执行：
+需要 Node.js 22 或更高版本，以及支持用户模块 API 1 和自定义面板草稿接口的 Halobot（本 PR 包含所需客户端兼容增强）。从本 repo 的 `extensions/tieba-reader` 目录执行：
 
 ```sh
 npm ci --ignore-scripts
@@ -13,13 +13,13 @@ npm run build
 npm run install:module
 ```
 
-默认安装到当前用户 `.dsh/plugins-data/aurabot/modules/tieba-reader`，遵守 `DSH_HOME`、`AURABOT_DATA_DIR`。也可显式指定目标：
+默认安装到当前用户 `.dsh/plugins-data/halobot/modules/tieba-reader`，遵守 `DSH_HOME`、`HALOBOT_DATA_DIR`。也可显式指定目标：
 
 ```sh
-npm run install:module -- "D:/my-data/aurabot/modules/tieba-reader"
+npm run install:module -- "D:/my-data/halobot/modules/tieba-reader"
 ```
 
-安装命令先在源码目录构建 `.build/`，再把独立运行包复制到用户模块目录，不在运行中的模块目录重新安装依赖。在 Aurabot 的“扩展”里重新加载 `tieba-reader`。状态和登录会话在 `modules-data/tieba-reader`，更新代码不会清空已有设置和浏览记录。
+安装命令先在源码目录构建 `.build/`，再把独立运行包复制到用户模块目录，不在运行中的模块目录重新安装依赖。在 Halobot 的“扩展”里重新加载 `tieba-reader`。状态和登录会话在 `modules-data/tieba-reader`，更新代码不会清空已有设置和浏览记录。
 
 也可将 `npm run build` 生成的 `.build/` 内容直接复制到用户模块目录；运行包无需安装 Cheerio 等 npm 依赖。构建依赖 esbuild 只在开发机使用，不需要提交生成的第三方打包代码。
 
@@ -57,7 +57,7 @@ npm run install:module -- "D:/my-data/aurabot/modules/tieba-reader"
 - 每次轮询一个吧，最多读两个未看过的候选帖子，再由当前模型判断是否值得分享。
 - 分享额度为 0 或已经用完时，继续读取新帖，但不调用模型、不发送分享。正常挑选分享会消耗模型额度。
 - 分享失败不永久标记为已处理，可在下次间隔重试。模块停用或重载会取消浏览器任务，丢弃尚未发送的结果。宿主模型接口暂未提供可用的取消参数，因此已开始的模型调用仍可能消耗额度，但结果不会触发后续发送。
-- “主动分享”按已保存的贴吧配置立即执行一轮，允许在关闭定时浏览、时段外或间隔未到时手动运行。它仍遵守功能总开关、Aurabot 总开关、试运行、连接状态、主人静默和每日分享上限；只给主人私聊分享。没有新帖、没有感兴趣的内容或额度用完时会说明原因，不保证每次点击都发送。原“试刷列表”输入框已移除；旧 `/preview` 接口保留用于只读诊断。
+- “主动分享”按已保存的贴吧配置立即执行一轮，允许在关闭定时浏览、时段外或间隔未到时手动运行。它仍遵守功能总开关、Halobot 总开关、试运行、连接状态、主人静默和每日分享上限；只给主人私聊分享。没有新帖、没有感兴趣的内容或额度用完时会说明原因，不保证每次点击都发送。原“试刷列表”输入框已移除；旧 `/preview` 接口保留用于只读诊断。
 - 底部“她刷过什么”卡片沿用 B 站布局，右上角“现在刷一轮”执行上述手动浏览分享。统计今日自动浏览轮次、已看帖子数和分享次数，列出最近 20 条已读／分享记录。手动浏览不增加自动轮次，分享仍计入每日上限；旧版本的历史分享记录继续保留，自动轮次和已读记录从本次升级开始记录。
 
 ## 内容范围与限制
@@ -81,4 +81,4 @@ npm test
 
 ## 提交范围
 
-此功能提交 `extensions/README.md` 和 `extensions/tieba-reader/` 的源码、测试、锁文件及文档，以及 `client/client.js` 中自定义面板草稿属性的兼容增强和 `src/modules/API.md` 的对应说明。自定义面板使用新增的 `draftSettings`／`setSettings`，需要一并更新客户端后重新打开 DSH。已有面板的 `settings`／`save` 行为不变。不要提交 `node_modules`、`.build`、`.runtime`、`.aurabot-cache`、Cookie、浏览器配置目录、真实抓取页面、私聊日志或本地个人设置。它不要求表情包、空间日记等其他改动。
+此功能提交 `extensions/README.md` 和 `extensions/tieba-reader/` 的源码、测试、锁文件及文档，以及 `client/client.js` 中自定义面板草稿属性的兼容增强和 `src/modules/API.md` 的对应说明。自定义面板使用新增的 `draftSettings`／`setSettings`，需要一并更新客户端后重新打开 DSH。已有面板的 `settings`／`save` 行为不变。不要提交 `node_modules`、`.build`、`.runtime`、`.halobot-cache`、Cookie、浏览器配置目录、真实抓取页面、私聊日志或本地个人设置。它不要求表情包、空间日记等其他改动。

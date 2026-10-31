@@ -27,7 +27,7 @@ function readJsonSafe(file) {
 export function detectInstall(dir) {
   const d = String(dir || '').trim()
   if (!d) return { installed: false, reason: '还没填 SnowLuma 目录' }
-  if (/[^\x00-\x7f]/.test(d)) return { installed: false, reason: '目录里有中文，请换成纯英文路径（例如 C:\\Aurabot\\snowluma）' }
+  if (/[^\x00-\x7f]/.test(d)) return { installed: false, reason: '目录里有中文，请换成纯英文路径（例如 C:\\Halobot\\snowluma）' }
   const entry = join(d, 'index.mjs')
   if (!existsSync(entry)) return { installed: false, reason: `在 ${d} 里没找到 index.mjs，请确认解压位置` }
   const nodeExe = join(d, 'node.exe')

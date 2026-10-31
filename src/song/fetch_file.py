@@ -22,7 +22,7 @@ class TooSlow(Exception):
 
 
 def total_size(opener, url):
-    req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'aurabot'})
+    req = urllib.request.Request(url, method='HEAD', headers={'User-Agent': 'halobot'})
     with opener.open(req, timeout=STALL) as r:
         return int(r.headers.get('Content-Length') or 0)
 
@@ -31,7 +31,7 @@ def fetch(opener, url, part, want, can_switch):
     have = os.path.getsize(part) if os.path.exists(part) else 0
     if want and have >= want:
         return True
-    headers = {'User-Agent': 'aurabot'}
+    headers = {'User-Agent': 'halobot'}
     if have:
         headers['Range'] = 'bytes=%d-' % have
     req = urllib.request.Request(url, headers=headers)

@@ -298,11 +298,11 @@ export function createSite({ browser, log }) {
       for (let i = 0; i < 3 && bar; i++) bar = bar.parentElement
       const icons = bar ? [...bar.querySelectorAll('span')].filter((n) => n.querySelector('svg') && n.getBoundingClientRect().width > 10) : []
       const send = icons.sort((x, y) => x.getBoundingClientRect().x - y.getBoundingClientRect().x).at(-1)
-      if (send) send.setAttribute('data-aurabot', 'send')
+      if (send) send.setAttribute('data-halobot', 'send')
       return Boolean(send)
     })()`).catch(() => false)
     const resp = b.waitResponse(/\/aweme\/v1\/web\/comment\/publish/, 12000)
-    if (marked) await b.press('[data-aurabot="send"]')
+    if (marked) await b.press('[data-halobot="send"]')
     else await b.pressEnter()
     const r = await resp
     try {
@@ -342,8 +342,8 @@ export function createSite({ browser, log }) {
       if (!row) return { found: false, listed: rows.length }
       const btn = [...row.querySelectorAll('*')].reverse().find((n) => ['分享', '捎句话'].includes((n.innerText || '').trim()))
       if (!btn) return { found: false, listed: rows.length }
-      document.querySelectorAll('[data-aurabot="share-to"]').forEach((n) => n.removeAttribute('data-aurabot'))
-      btn.setAttribute('data-aurabot', 'share-to')
+      document.querySelectorAll('[data-halobot="share-to"]').forEach((n) => n.removeAttribute('data-halobot'))
+      btn.setAttribute('data-halobot', 'share-to')
       return { found: true, done: btn.innerText.trim() === '捎句话' }
     })()`).catch(() => ({ found: false }))
     // 分享按钮是开 / 关切换：面板已经开着就不点；点了等不到就再点一下
@@ -377,7 +377,7 @@ export function createSite({ browser, log }) {
     const already = Boolean(hit.done) // 这个视频之前就分享给他过了，不再重复分享
     if (!already) {
       const resp = b.waitResponse(sent, 12000)
-      await b.press('[data-aurabot="share-to"]')
+      await b.press('[data-halobot="share-to"]')
       const r = await resp
       if (!r) throw new Error('点了分享，但没等到抖音私信的回应')
       if (r.status !== 200) throw new Error(`抖音私信没发出去（HTTP ${r.status}）`)
@@ -387,7 +387,7 @@ export function createSite({ browser, log }) {
 
   // ---------- 私信（独立聊天页 douyin.com/chat） ----------
   const CHAT = `${HOME}chat?isPopup=1`
-  const DM_EDIT = '[data-aurabot="dm-edit"]'
+  const DM_EDIT = '[data-halobot="dm-edit"]'
 
   /** 打开和某人的私信会话：会话 id 是「0:1:双方 uid」，按 uid 认人。页面在后台时列表要十几秒才出来。 */
   async function openChat(uid, { secUid = '' } = {}) {
@@ -414,8 +414,8 @@ export function createSite({ browser, log }) {
           if (match && (!hit || hit.contains(n))) hit = n
         }
         if (!hit) return false
-        document.querySelectorAll('[data-aurabot="conv"]').forEach((x) => x.removeAttribute('data-aurabot'))
-        hit.setAttribute('data-aurabot', 'conv')
+        document.querySelectorAll('[data-halobot="conv"]').forEach((x) => x.removeAttribute('data-halobot'))
+        hit.setAttribute('data-halobot', 'conv')
         return true
       })()`).catch(() => false)
       if (!found) await sleep(1000)
@@ -423,7 +423,7 @@ export function createSite({ browser, log }) {
     // 列表里没有：用主页的「私信」按钮开一个新会话（陌生人也能主动发起）
     if (!found && secUid) found = await openFromProfile(secUid)
     if (!found) throw Object.assign(new Error('私信列表里没找到这个人，主页也没有可用的「私信」入口（可能对方关闭了私信）'), { code: 'dm' })
-    await b.press('[data-aurabot="conv"]')
+    await b.press('[data-halobot="conv"]')
     await sleep(1500)
   }
 
@@ -442,8 +442,8 @@ export function createSite({ browser, log }) {
           if (!nodes.length) return false
           nodes.sort((a, c) => (a.getBoundingClientRect().width * a.getBoundingClientRect().height) - (c.getBoundingClientRect().width * c.getBoundingClientRect().height))
           const hit = nodes[0]
-          document.querySelectorAll('[data-aurabot="dm-open"]').forEach((x) => x.removeAttribute('data-aurabot'))
-          hit.setAttribute('data-aurabot', 'dm-open')
+          document.querySelectorAll('[data-halobot="dm-open"]').forEach((x) => x.removeAttribute('data-halobot'))
+          hit.setAttribute('data-halobot', 'dm-open')
           return true
         })()`).catch(() => false)
         if (ok) return true
@@ -452,7 +452,7 @@ export function createSite({ browser, log }) {
       return false
     })()
     if (!marked) return false
-    await b.press('[data-aurabot="dm-open"]')
+    await b.press('[data-halobot="dm-open"]')
     // 点完可能停在私信页，也可能弹出会话：等到输入框出现，再按 uid 核对一次会话
     for (let i = 0; i < 20; i++) {
       await sleep(1000)
@@ -501,7 +501,7 @@ export function createSite({ browser, log }) {
       // 按输入框自己的样子认（占位文字「发送消息」），别按位置：窗口宽窄不同，会话列表的宽度也不同
       const e = document.querySelector('.editor-kit-container[contenteditable="true"]') || [...document.querySelectorAll('[contenteditable="true"]')].find((x) => /发送消息/.test(x.getAttribute('data-placeholder') || x.getAttribute('placeholder') || ''))
       if (!e) return false
-      e.setAttribute('data-aurabot', 'dm-edit')
+      e.setAttribute('data-halobot', 'dm-edit')
       e.focus()
       return document.activeElement === e
     })()`).catch(() => false)
@@ -530,10 +530,10 @@ export function createSite({ browser, log }) {
       const remaining = await inBox()
       // 仍完整留在输入框，且没有新消息：回车没触发发送，可安全点击一次按钮。
       if (dmEqual(remaining, text)) {
-        const marked = await b.evaluate(`(() => { const s = document.querySelector('[class*="publishBtn"]'); if (!s) return false; s.setAttribute('data-aurabot', 'dm-send'); return true })()`).catch(() => false)
+        const marked = await b.evaluate(`(() => { const s = document.querySelector('[class*="publishBtn"]'); if (!s) return false; s.setAttribute('data-halobot', 'dm-send'); return true })()`).catch(() => false)
         if (marked) {
           const response = b.waitResponse(sent, 8000)
-          await b.press('[data-aurabot="dm-send"]')
+          await b.press('[data-halobot="dm-send"]')
           r = await response
           if (!r) {
             await sleep(1500)
@@ -610,10 +610,10 @@ export function createSite({ browser, log }) {
     const marked = await b.evaluate(`(() => {
       const all = [...document.querySelectorAll('button,div,span,a,p')].filter((n) => (n.innerText || '').trim() === '登录' && n.getBoundingClientRect().width > 0 && n.getBoundingClientRect().top < 120)
       const n = all.sort((a, c) => a.getBoundingClientRect().width - c.getBoundingClientRect().width)[0]
-      if (n) n.setAttribute('data-aurabot', 'login')
+      if (n) n.setAttribute('data-halobot', 'login')
       return Boolean(n)
     })()`).catch(() => false)
-    if (marked) await b.press('[data-aurabot="login"]')
+    if (marked) await b.press('[data-halobot="login"]')
     await b.waitFor('#douyin_login_comp_scan_code img, #douyin_login_comp_scan_code canvas', 12000)
     return { ok: true, loggedIn: false, shot: await loginShot() }
   }

@@ -242,7 +242,7 @@ export function createCodexAuth ({ log, fetchImpl, openUrl, createServerImpl = c
           if (err) { html(400, '登录没有完成，请回面板重新登录'); settle({ error: '授权未完成' }); return }
           const code = url.searchParams.get('code') || ''
           if (!code) return html(400, '没有 code')
-          html(200, '<h2>已收到授权结果</h2><p>回到 Aurabot 面板查看登录结果。</p>')
+          html(200, '<h2>已收到授权结果</h2><p>回到 Halobot 面板查看登录结果。</p>')
           try { server.close() } catch (error) {}
           settle({ code })
         } catch (error) {

@@ -35,7 +35,7 @@ export function createBrowserReader(api, getCookie, { spawnImpl = spawn, resolve
   function run(url, kind) {
     if (disposed) return Promise.reject(new Error('贴吧模块已停用。'));
     const exe = resolveImpl(api);
-    const env = { ...process.env, AURABOT_TIEBA_PROFILE: api.dataDir('browser-profile') };
+    const env = { ...process.env, HALOBOT_TIEBA_PROFILE: api.dataDir('browser-profile') };
     delete env.ELECTRON_RUN_AS_NODE; delete env.NODE_OPTIONS;
     return runBrowserJob({ exe, script: join(api.dir, 'browser.cjs'), env,
       request: { url, kind, cookie: getCookie() }, timeoutMs: timeoutMs ?? (kind === 'login' ? 600000 : 48000), spawnImpl, active,

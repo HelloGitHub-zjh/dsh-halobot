@@ -34,7 +34,7 @@ test('requests read-only, cookies only sent to Tieba; verification falls back to
   for(const {url,init} of requests){assert.equal(new URL(url).hostname,'tieba.baidu.com');assert.equal(init.method,'GET');assert.equal(init.redirect,'manual');assert.equal(init.headers.cookie,'BDUSS=private');}
 });
 test('automatic browse obeys switches, shares a read post once, and deduplicates', async () => {
-  const dir=mkdtempSync(join(tmpdir(),'aurabot-tieba-test-'));
+  const dir=mkdtempSync(join(tmpdir(),'halobot-tieba-test-'));
   const opts={...moduleDef.defaults,bars:'deepseek',autoBrowse:true,startHour:0,endHour:0,intervalMinutes:10};
   const cfg={enabled:true,dryRun:true,ownerQQ:'12345'};
   let sent=0, modelCalls=0;
@@ -56,7 +56,7 @@ test('automatic browse obeys switches, shares a read post once, and deduplicates
   } finally {globalThis.fetch=previous;}
 });
 test('already-bound tools resolve current module exports after a hot reload', async () => {
-  const dir=mkdtempSync(join(tmpdir(),'aurabot-tieba-binding-'));
+  const dir=mkdtempSync(join(tmpdir(),'halobot-tieba-binding-'));
   const builders=[];
   let current={version:'old',read:async()=>({ok:true,title:'old'})};
   const api={lib:()=>({registerSecretField(){}}),dataDir:f=>join(dir,f),settings:()=>moduleDef.defaults,config:()=>({}),

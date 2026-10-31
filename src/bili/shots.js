@@ -1,6 +1,6 @@
 // 截图库：抽帧时顺手把画面存下来，之后她自己发、或主人让她挑一张发出来。
 //
-// 存 ~/.dsh/plugins-data/aurabot/bili-shots/：每张一个 jpg + 一个 index.json。
+// 存 ~/.dsh/plugins-data/halobot/bili-shots/：每张一个 jpg + 一个 index.json。
 // 按 MD5 去重（同一个视频重看一遍不会又存一遍），只留最近 max 张，超了删最旧的。
 
 import { createHash } from 'node:crypto'

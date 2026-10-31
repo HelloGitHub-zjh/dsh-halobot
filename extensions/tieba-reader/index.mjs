@@ -49,7 +49,7 @@ export default {
         api.defineTool({ name: 'tieba_read', description: '打开贴吧帖子读取第一页正文和回复，最多 10 楼。看不到正文时如实说明。',
           properties: { url: { type: 'string', description: 'https://tieba.baidu.com/p/帖子编号' } }, required: ['url'],
           execute: async ({ url }) => wrap(await api.use('tieba-reader').read(url)) }),
-        // Adding this tool also invalidates Aurabot's name-only binding cache
+        // Adding this tool also invalidates Halobot's name-only binding cache
         // for QQ sessions that were already open before browser reading shipped.
         api.defineTool({ name: 'tieba_reader_status', description: '检查贴吧读取模块的当前版本和读取方式。历史消息说读不到时，可先检查状态后重新读帖，不沿用旧失败结论。',
           execute: async () => {
@@ -71,7 +71,7 @@ export default {
       if (opt.enabled === false) return blocked('贴吧功能已关闭，请打开登录卡片右上角的总开关');
       if (!manual && !opt.autoBrowse) return blocked('定时浏览未开启');
       if (!owner) return blocked('尚未配置主人 QQ');
-      if (!cfg.enabled) return blocked('Aurabot 总开关已关闭');
+      if (!cfg.enabled) return blocked('Halobot 总开关已关闭');
       if (cfg.dryRun) return blocked('当前为试运行，不会发送分享');
       if (api.core.onebot.state !== 'connected') return blocked('QQ 网关未连接');
       if (api.core.mutes.muted(target)) return blocked('主人私聊处于静默，不发送分享');

@@ -1,5 +1,5 @@
 // 文字 → 语音文件。
-//   首选：edge-tts（微软在线朗读，音色好），装在插件自己的 Python 虚拟环境 C:\Aurabot\pyenv 里，不污染系统。
+//   首选：edge-tts（微软在线朗读，音色好），装在插件自己的 Python 虚拟环境 C:\Halobot\pyenv 里，不污染系统。
 //   兜底：Windows 自带的中文语音（System.Speech / Huihui），什么都不装也能用（只有 Windows 有）。
 // 管线：文字 → TTS → 文件路径。任何一步失败由调用方退回发文字。（RVC 音色目前用在翻唱上，见 src/song/）
 
@@ -11,9 +11,9 @@ import { homedir } from 'node:os'
 import { randomUUID } from 'node:crypto'
 import { dataDir } from '../core/store.js'
 
-// edge-tts 的私有 Python 环境，一键安装时自动创建。老安装沿用 C:\Aurabot\pyenv；新安装放在用户目录下
-const LEGACY_PYENV = 'C:\\Aurabot\\pyenv'
-export const PYENV_DIR = process.env.AURABOT_PYENV || (existsSync(LEGACY_PYENV) ? LEGACY_PYENV : join(homedir(), 'Aurabot', 'pyenv'))
+// edge-tts 的私有 Python 环境，一键安装时自动创建。老安装沿用 C:\Halobot\pyenv；新安装放在用户目录下
+const LEGACY_PYENV = 'C:\\Halobot\\pyenv'
+export const PYENV_DIR = process.env.HALOBOT_PYENV || (existsSync(LEGACY_PYENV) ? LEGACY_PYENV : join(homedir(), 'Halobot', 'pyenv'))
 const WIN = process.platform === 'win32'
 // 虚拟环境的目录结构 Windows 和 Linux / macOS 不一样
 const pyExe = () => (WIN ? join(PYENV_DIR, 'Scripts', 'python.exe') : join(PYENV_DIR, 'bin', 'python'))
@@ -105,12 +105,12 @@ export async function installEdge(log) {
 
 /** 找 uv：电脑上有就用，翻唱装过的也能用，都没有就下一个（走系统代理）。 */
 async function findOrFetchUv(log) {
-  if (process.env.AURABOT_UV) return process.env.AURABOT_UV
+  if (process.env.HALOBOT_UV) return process.env.HALOBOT_UV
   if ((await run('uv', ['--version'], { timeoutMs: 15000 })).code === 0) return 'uv'
   // Linux / macOS：只找装好的（官方安装脚本默认放 ~/.local/bin 或 ~/.cargo/bin），不自动下载
   if (!WIN) return [join(homedir(), '.local', 'bin', 'uv'), join(homedir(), '.cargo', 'bin', 'uv')].find((p) => existsSync(p)) || ''
   const local = join(dirname(PYENV_DIR), 'bin', 'uv.exe')
-  for (const p of [local, join('C:\\Aurabot', 'rvc', 'bin', 'uv.exe'), join(homedir(), 'Aurabot', 'rvc', 'bin', 'uv.exe')]) if (existsSync(p)) return p
+  for (const p of [local, join('C:\\Halobot', 'rvc', 'bin', 'uv.exe'), join(homedir(), 'Halobot', 'rvc', 'bin', 'uv.exe')]) if (existsSync(p)) return p
   log?.info('下载 uv …')
   const zip = join(dirname(PYENV_DIR), 'bin', 'uv.zip')
   const tmp = join(dirname(PYENV_DIR), 'bin', 'uv-src')

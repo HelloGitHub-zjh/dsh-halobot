@@ -1,7 +1,7 @@
 {
-  "name": "dsh-dafeiyu",
-  "version": "2.0.0",
-  "description": "大肥鱼：独立维护的 QQ 伙伴插件（基于 Aurabot 1.1.24 分叉，本人维护，与上游无同步关系）",
+  "name": "dsh-halobot",
+  "version": "3.0.0",
+  "description": "哈洛（Halobot）：住在 QQ 里的 AI 伙伴，DeepSeek Harness 插件（源自 Aurabot 1.1.24 的独立分支）",
   "license": "MIT",
   "private": true,
   "type": "module",
@@ -33,7 +33,8 @@
     "deepseek-harness",
     "dsh-plugin",
     "qq",
-    "onebot"
+    "onebot",
+    "halobot"
   ],
   "files": [
     "extensions",
@@ -49,13 +50,13 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/HelloGitHub-zjh/dsh-dafeiyu.git"
+    "url": "https://github.com/HelloGitHub-zjh/dsh-halobot.git"
   },
-  "homepage": "https://github.com/HelloGitHub-zjh/dsh-dafeiyu",
+  "homepage": "https://github.com/HelloGitHub-zjh/dsh-halobot",
   "engines": {
     "node": ">=22.13.0"
   },
   "bugs": {
-    "url": "https://github.com/HelloGitHub-zjh/dsh-dafeiyu/issues"
+    "url": "https://github.com/HelloGitHub-zjh/dsh-halobot/issues"
   }
 }

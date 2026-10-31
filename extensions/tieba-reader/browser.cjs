@@ -5,7 +5,7 @@ const { createConnection } = require('node:net');
 const { waitForLogin } = require('./login.cjs');
 const fs = require('node:fs');
 const { join } = require('node:path');
-const profile = process.env.AURABOT_TIEBA_PROFILE;
+const profile = process.env.HALOBOT_TIEBA_PROFILE;
 if (!profile) process.exit(1);
 app.setPath('userData', profile);
 let win;
@@ -105,10 +105,10 @@ function shutdown() {
 for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, shutdown);
 app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
-  const socket = createConnection({ host: '127.0.0.1', port: Number(process.env.AURABOT_TIEBA_PORT) });
-  const token = process.env.AURABOT_TIEBA_TOKEN;
-  delete process.env.AURABOT_TIEBA_TOKEN;
-  delete process.env.AURABOT_TIEBA_PORT;
+  const socket = createConnection({ host: '127.0.0.1', port: Number(process.env.HALOBOT_TIEBA_PORT) });
+  const token = process.env.HALOBOT_TIEBA_TOKEN;
+  delete process.env.HALOBOT_TIEBA_TOKEN;
+  delete process.env.HALOBOT_TIEBA_PORT;
   socket.setEncoding('utf8');
   socket.on('error', shutdown);
   socket.on('close', shutdown);
@@ -126,9 +126,9 @@ app.whenReady().then(async () => {
   if (!req) return shutdown();
   let result;
   try {
-    result = { ok: true, data: await execute(req, event => socket.write('AURABOT_TIEBA:' + JSON.stringify({ event }) + '\n')) };
+    result = { ok: true, data: await execute(req, event => socket.write('HALOBOT_TIEBA:' + JSON.stringify({ event }) + '\n')) };
     await session.fromPartition('persist:tieba-reader').cookies.flushStore();
   }
   catch (error) { result = { ok: false, message: String(error.message || error).slice(0, 300) }; }
-  socket.end('AURABOT_TIEBA:' + JSON.stringify(result) + '\n', shutdown);
+  socket.end('HALOBOT_TIEBA:' + JSON.stringify(result) + '\n', shutdown);
 });

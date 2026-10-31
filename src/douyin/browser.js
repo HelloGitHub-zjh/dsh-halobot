@@ -169,7 +169,7 @@ export function createBrowser({ profileDir, browserPath = () => '', log } = {}) 
       await sleep(250)
       if (await getJson(`http://127.0.0.1:${port}/json/version`, 1500).catch(() => null)) {
         // Edge 经常不写这个文件，自己写一份，DSH 重启后才能接回这个窗口
-        try { writeFileSync(join(profileDir, 'DevToolsActivePort'), `${port}\n/devtools/browser/aurabot\n`) } catch (error) {}
+        try { writeFileSync(join(profileDir, 'DevToolsActivePort'), `${port}\n/devtools/browser/halobot\n`) } catch (error) {}
         await attach(port)
         return { ok: true }
       }

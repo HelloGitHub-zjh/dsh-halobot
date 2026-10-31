@@ -1,8 +1,8 @@
-// Aurabot · 宿主半边（DSH 插件入口）
+// Halobot · 宿主半边（DSH 插件入口）
 //
-// 让 DSH 里的 AI 以独立 QQ 号「大肥鱼」住在 QQ 里：
-//   SnowLuma（OneBot v11）⇄ 本插件 ⇄ DSH 会话（Aurabot 自带的 preset + 人格）
-// 面板在侧栏「自动化任务」下面（网页半边见 client/client.js），这里提供它要的 /aurabot/api/* 接口。
+// 让 DSH 里的 AI 以独立 QQ 号「哈洛」住在 QQ 里：
+//   SnowLuma（OneBot v11）⇄ 本插件 ⇄ DSH 会话（Halobot 自带的 preset + 人格）
+// 面板在侧栏「自动化任务」下面（网页半边见 client/client.js），这里提供它要的 /halobot/api/* 接口。
 //
 // 这个文件只管「核心」：配置、QQ 网关、聊天中枢、人格、面板接口、模块内核和联动。
 // 表情、语音、记忆、空间、B 站、翻唱、生图……都是模块（src/modules/），能单独关掉，也能用自己写的替换。
@@ -33,7 +33,7 @@ import { createBridge } from './core/bridge.js'
 import { createDangerGuard } from './security/danger.js'
 import { BUILTINS } from './modules/index.js'
 
-export const name = 'aurabot'
+export const name = 'halobot'
 export const inject = ['agents', 'sessions', 'webServer', 'timer', 'workspaceRegistry', 'attachments', 'systemPrompt', 'llm']
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..')
@@ -41,7 +41,7 @@ const PKG = (() => {
   try { return JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) } catch (error) { return { version: '?' } }
 })()
 const VERSION = PKG.version
-const PREFIX = '/aurabot/api'
+const PREFIX = '/halobot/api'
 
 export function apply(ctx) {
   const logger = createLogger({ dsh: ctx })
@@ -68,20 +68,20 @@ export function apply(ctx) {
   secrets()
   seedPersonas()
 
-  // ---------- 人格与规则：通过提示词变量注入到 Aurabot 的两个 preset ----------
-  const variable = (n, fn) => ctx.effect(() => ctx.systemPrompt.variable(n, fn), `aurabot: 变量 ${n}`)
+  // ---------- 人格与规则：通过提示词变量注入到 Halobot 的两个 preset ----------
+  const variable = (n, fn) => ctx.effect(() => ctx.systemPrompt.variable(n, fn), `halobot: 变量 ${n}`)
   const rulesOpts = (kind) => (mods ? { off: mods.builtinOff(), extra: mods.rules(kind) } : {})
   // 扩展模块能整段改写人格和规则（同步：提示词变量不能等）
   const rewrite = (event, text, ...args) => { const r = mods ? mods.filterSync(event, text, ...args) : text; return typeof r === 'string' ? r : r === null ? '' : text }
-  variable('aurabot_persona', () => rewrite('persona', currentPersonaText(cfg.persona.current)))
-  variable('aurabot_rules_private', () => {
+  variable('halobot_persona', () => rewrite('persona', currentPersonaText(cfg.persona.current)))
+  variable('halobot_rules_private', () => {
     const base = rewrite('rules', rulesText('private', cfg, rulesOpts('private')), 'private')
     // 危险命令确认开着时补一句：被拦下要如实告诉主人，别绕着写
     return base + (cfg.security && cfg.security.dangerConfirm
       ? '\n【危险命令】终端命令如果被安全策略拦下（删根目录/格式化/关机/下载后直接执行等），把命令原文和原因如实告诉主人，等主人回复「确认」后再重试；不要换一种写法绕过。'
       : '')
   })
-  variable('aurabot_rules_social', () => rewrite('rules', rulesText('social', cfg, rulesOpts('social')), 'social'))
+  variable('halobot_rules_social', () => rewrite('rules', rulesText('social', cfg, rulesOpts('social')), 'social'))
 
   // ---------- QQ 网关 ----------
   const snowluma = createSnowLumaManager({
@@ -309,7 +309,7 @@ export function apply(ctx) {
       send(res, 200, { ok: false, message: redact(String(error && error.message ? error.message : error)) })
     }
   }
-  const route = (path, handler) => ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: PREFIX + path, handler: (req, res) => answer(res, () => handler(req, res)) }), `aurabot: 路由 ${path}`)
+  const route = (path, handler) => ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: PREFIX + path, handler: (req, res) => answer(res, () => handler(req, res)) }), `halobot: 路由 ${path}`)
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: PREFIX, // DSH 按「路径 = 前缀 或 以 前缀/ 开头」匹配，前缀本身不带结尾的 /
@@ -318,7 +318,7 @@ export function apply(ctx) {
       try { path = new URL(req.url, 'http://x').pathname } catch (error) {}
       return mods.handle(path, req, res)
     }),
-  }), 'aurabot: 模块接口')
+  }), 'halobot: 模块接口')
 
   // ---------- 模块 ----------
   const core = {
@@ -349,7 +349,7 @@ export function apply(ctx) {
     let off = null
     try { off = ctx.on('tools/pre-execute', (exec, next) => dangerGuard.preExecute(exec, next)) } catch (error) { log.debug('挂危险命令确认失败：', error.message) }
     return () => { try { if (typeof off === 'function') off() } catch (error) {} }
-  }, 'aurabot: 危险命令确认')
+  }, 'halobot: 危险命令确认')
 
   const booted = mods.boot()
   booted.then(() => bridge.refresh())
@@ -364,7 +364,7 @@ export function apply(ctx) {
       }
     })
     return () => { try { if (typeof off === 'function') off() } catch (error) {} }
-  }, 'aurabot: 盯会话')
+  }, 'halobot: 盯会话')
 
   // ---------- 启动 / 看门狗 ----------
   async function watchdog() {
@@ -390,14 +390,14 @@ export function apply(ctx) {
     }
   }
   const safe = (fn, label) => () => { Promise.resolve().then(fn).catch((error) => log.warn(`${label}出错：`, error.message)) }
-  ctx.effect(() => ctx.interval(safe(watchdog, '看门狗'), 30_000), 'aurabot: 看门狗')
+  ctx.effect(() => ctx.interval(safe(watchdog, '看门狗'), 30_000), 'halobot: 看门狗')
   setTimeout(safe(watchdog, '看门狗'), 3000).unref?.()
   ctx.effect(() => () => {
     hub.disposeRecentMedia()
     mods.dispose()
     onebot.stop()
     snowluma.dispose()
-  }, 'aurabot: 收尾')
+  }, 'halobot: 收尾')
 
   // ---------- 面板接口 ----------
   let consentCache = { at: 0, value: null }
@@ -605,7 +605,7 @@ export function apply(ctx) {
     if (body.existingConnection && !(cfg.enabled && onebotState === 'connected' && loginOk)) return { ok: false, message: 'QQ 网关还没通过机器人号核对，请先连接并核对后再进入面板' }
     setConfig({ ...cfg, setupDone: true })
     log.info('首次使用向导完成')
-    return { ...(await overview()), message: '设置完成，大肥鱼可以上线啦' }
+    return { ...(await overview()), message: '设置完成，哈洛可以上线啦' }
   })
   route('/snowluma/processes', async () => {
     try { return { ok: true, list: await snowluma.processes() } } catch (error) { return { ok: false, message: error.message, list: [] } }
@@ -652,7 +652,7 @@ export function apply(ctx) {
   route('/test-send', async () => {
     if (!cfg.enabled) return { ok: false, message: '先打开总开关' }
     if (cfg.dryRun) return { ok: false, message: '现在是试运行，先关掉试运行再测' }
-    const r = await hub.sendText(`private:${cfg.ownerQQ}`, '【Aurabot 自测】大肥鱼到此一游～')
+    const r = await hub.sendText(`private:${cfg.ownerQQ}`, '【Halobot 自测】哈洛到此一游～')
     return r ? { ok: true, message: '发给主人了，去 QQ 看看' } : { ok: false, message: '没发出去（看日志）' }
   })
 
@@ -745,7 +745,7 @@ export function apply(ctx) {
     const slot = String((await readBody(req)).slot || '')
     try {
       if (slot === 'tts') {
-        const file = fileOf(await local.call('tts', { text: '你好呀，我是大肥鱼，这是本地语音测试。' }))
+        const file = fileOf(await local.call('tts', { text: '你好呀，我是哈洛，这是本地语音测试。' }))
         if (!file || !existsSync(file)) return { ok: false, message: '脚本没返回音频文件' }
         return { ok: true, message: `念好了：${file}` }
       }
@@ -881,7 +881,7 @@ export function apply(ctx) {
   })
 
   // 形象图
-  // 头像：自定义的放在数据目录（重装插件不丢），没有就用插件自带的大肥鱼
+  // 头像：自定义的放在数据目录（重装插件不丢），没有就用插件自带的哈洛
   const AVATAR = () => dataDir('avatar.img')
   const avatarInfo = () => {
     try { return { custom: true, at: statSync(AVATAR()).mtimeMs } } catch (error) { return { custom: false, at: 0 } }
@@ -891,7 +891,7 @@ export function apply(ctx) {
       const buf = readFileSync(AVATAR())
       return send(res, 200, buf, mimeOf(buf))
     }
-    const p = join(ROOT, 'assets', 'dafeiyu.jpg')
+    const p = join(ROOT, 'assets', 'halobot.jpg')
     if (!existsSync(p)) return send(res, 404, '')
     send(res, 200, readFileSync(p), 'image/jpeg')
   })
@@ -910,7 +910,7 @@ export function apply(ctx) {
     return { ok: true, message: '恢复成默认头像了', avatar: avatarInfo() }
   })
   route('/avatar/sync-qq', async () => {
-    const buf = existsSync(AVATAR()) ? readFileSync(AVATAR()) : readFileSync(join(ROOT, 'assets', 'dafeiyu.jpg'))
+    const buf = existsSync(AVATAR()) ? readFileSync(AVATAR()) : readFileSync(join(ROOT, 'assets', 'halobot.jpg'))
     try {
       await onebot.call('set_qq_avatar', { file: 'base64://' + buf.toString('base64') })
       return { ok: true, message: '已经设成机器人号的 QQ 头像' }
@@ -919,7 +919,7 @@ export function apply(ctx) {
     }
   })
 
-  log.info(`Aurabot v${VERSION} 已加载｜总开关 ${cfg.enabled ? '开' : '关'}｜试运行 ${cfg.dryRun ? '开' : '关'}｜工作区 ${workspaceDirOf(cfg)}`)
+  log.info(`Halobot v${VERSION} 已加载｜总开关 ${cfg.enabled ? '开' : '关'}｜试运行 ${cfg.dryRun ? '开' : '关'}｜工作区 ${workspaceDirOf(cfg)}`)
 
   return {
     hub, onebot, snowluma, getConfig, setConfig, logger, modules: mods, bridge, ready: booted,

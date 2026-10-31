@@ -43,9 +43,9 @@ export function runBrowserJob({ exe, script, env, request, timeoutMs, spawnImpl,
             verified = true; authenticated = socket;
             socket.write(JSON.stringify(request) + '\n');
           } else {
-            if (!line.startsWith('AURABOT_TIEBA:')) return finish(new Error('浏览器返回了无效数据。'));
+            if (!line.startsWith('HALOBOT_TIEBA:')) return finish(new Error('浏览器返回了无效数据。'));
             try {
-              const result = JSON.parse(line.slice('AURABOT_TIEBA:'.length));
+              const result = JSON.parse(line.slice('HALOBOT_TIEBA:'.length));
               if (result.event === 'login-opened') { onProgress?.(result.event); continue; }
               finish(result.ok ? null : new Error(result.message || '浏览器读取失败。'), result.data);
             } catch { finish(new Error('浏览器返回了无效数据。')); }
@@ -58,7 +58,7 @@ export function runBrowserJob({ exe, script, env, request, timeoutMs, spawnImpl,
     server.listen(0, '127.0.0.1', () => {
       if (settled) return;
       try {
-        child = spawnImpl(exe, [script], { env: { ...env, AURABOT_TIEBA_PORT: String(server.address().port), AURABOT_TIEBA_TOKEN: token }, windowsHide: request.kind !== 'login', stdio: 'ignore' });
+        child = spawnImpl(exe, [script], { env: { ...env, HALOBOT_TIEBA_PORT: String(server.address().port), HALOBOT_TIEBA_TOKEN: token }, windowsHide: request.kind !== 'login', stdio: 'ignore' });
         child.on('error', () => finish(new Error('浏览器组件启动失败，请检查路径和运行权限。')));
         child.on('exit', () => { exitTimer = setTimeout(() => finish(new Error('浏览器进程提前退出。')), 100); });
       } catch { finish(new Error('无法启动浏览器组件。')); }

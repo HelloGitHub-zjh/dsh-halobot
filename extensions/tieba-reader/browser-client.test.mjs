@@ -9,9 +9,9 @@ function harness(behavior, timeoutMs=1000) {
   const api={dir:'/module',settings:()=>({}),dataDir:x=>'/data/'+x,onDispose:fn=>{dispose=fn;}};
   const spawnImpl=(exe,args,options)=>{
     const child=new EventEmitter();child.stdout=new PassThrough();child.killed=false;
-    const socket=createConnection({host:'127.0.0.1',port:Number(options.env.AURABOT_TIEBA_PORT)});
+    const socket=createConnection({host:'127.0.0.1',port:Number(options.env.HALOBOT_TIEBA_PORT)});
     socket.on('error',()=>{});
-    socket.once('connect',()=>socket.write(options.env.AURABOT_TIEBA_TOKEN+'\n'));
+    socket.once('connect',()=>socket.write(options.env.HALOBOT_TIEBA_TOKEN+'\n'));
     let buffer='';socket.setEncoding('utf8');socket.on('data',chunk=>{buffer+=chunk;const end=buffer.indexOf('\n');if(end!==-1)behavior?.(child,JSON.parse(buffer.slice(0,end)));});
     child.stdout.on('data',chunk=>socket.write(chunk));
     child.kill=()=>{child.killed=true;socket.destroy();};
@@ -23,7 +23,7 @@ function harness(behavior, timeoutMs=1000) {
 test('credentials go only over authenticated IPC; UTF-8 output survives split chunks',async()=>{
   const h=harness((child,request)=>{
     assert.equal(request.cookie,'BDUSS=test-secret');
-    const result=Buffer.from('AURABOT_TIEBA:'+JSON.stringify({ok:true,data:{title:'测试中文'}})+'\n');
+    const result=Buffer.from('HALOBOT_TIEBA:'+JSON.stringify({ok:true,data:{title:'测试中文'}})+'\n');
     const cut=result.indexOf(Buffer.from('测试'))+1;
     queueMicrotask(()=>{child.stdout.write(result.subarray(0,cut));child.stdout.write(result.subarray(cut));});
   });
@@ -47,9 +47,9 @@ test('opening login is deduplicated and completion updates its status',async()=>
   await assert.rejects(h.reader('https://tieba.baidu.com/','account'),/手动关闭/);
   assert.equal(h.children.length,1);
   assert.equal(h.children[0].options.windowsHide,false);
-  h.children[0].child.stdout.write('AURABOT_TIEBA:'+JSON.stringify({event:'login-opened'})+'\n');
+  h.children[0].child.stdout.write('HALOBOT_TIEBA:'+JSON.stringify({event:'login-opened'})+'\n');
   await new Promise(r=>setTimeout(r,10));assert.match(h.reader.status().lastLogin,/窗口已打开/);assert.equal(h.reader.status().loginPending,true);
-  h.children[0].child.stdout.write('AURABOT_TIEBA:'+JSON.stringify({ok:true,data:{loggedIn:true,name:'测试账号',autoClosed:true}})+'\n');
+  h.children[0].child.stdout.write('HALOBOT_TIEBA:'+JSON.stringify({ok:true,data:{loggedIn:true,name:'测试账号',autoClosed:true}})+'\n');
   // 等回环 IPC 把结果走完（Linux 上 setImmediate 一次不够，改成最多等 500ms）
   for (let i = 0; i < 100 && h.reader.status().loginPending; i++) await new Promise(r=>setTimeout(r,5));
   assert.equal(h.reader.status().loginPending,false);assert.match(h.reader.status().lastLogin,/会话已保存/);h.dispose();
@@ -68,7 +68,7 @@ test('missing runtime opens default browser without reading credentials or claim
   assert.equal(result.loggedIn,null);assert.equal(reader.status().account.loggedIn,null);assert.equal(reader.status().loginPending,false);assert.equal(reader.available(),false);assert.equal(cookieReads,0);dispose();
 });
 test('account checks and logout replace the same cached status; status reads never start a browser',async()=>{
-  const h=harness((child,req)=>queueMicrotask(()=>child.stdout.write('AURABOT_TIEBA:'+JSON.stringify({ok:true,data:req.kind==='logout'?{loggedIn:false,message:'已退出'}:{ok:true,loggedIn:true,name:'test',message:'已登录：test'}})+'\n')));
+  const h=harness((child,req)=>queueMicrotask(()=>child.stdout.write('HALOBOT_TIEBA:'+JSON.stringify({ok:true,data:req.kind==='logout'?{loggedIn:false,message:'已退出'}:{ok:true,loggedIn:true,name:'test',message:'已登录：test'}})+'\n')));
   assert.equal(h.reader.status().account.checkedAt,0);assert.equal(h.children.length,0);
   await h.reader('https://tieba.baidu.com/','account');assert.equal(h.reader.status().account.loggedIn,true);assert.ok(h.reader.status().account.checkedAt>0);
   h.reader.status();assert.equal(h.children.length,1);

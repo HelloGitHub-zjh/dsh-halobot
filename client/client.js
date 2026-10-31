@@ -1,9 +1,9 @@
-// Aurabot · 网页半边：侧栏「自动化任务」下面的「Aurabot」入口 + 整页面板（顶部标签切换功能）。
-// 只读写宿主半边的 /aurabot/api/* 接口，不直接碰会话和 QQ。
-// 视觉：沿用 DSH 的主题变量（--dsw-alias-*），浅色 / 深色自动跟随；点缀用大肥鱼的深蓝、海蓝、白。
+// Halobot · 网页半边：侧栏「自动化任务」下面的「Halobot」入口 + 整页面板（顶部标签切换功能）。
+// 只读写宿主半边的 /halobot/api/* 接口，不直接碰会话和 QQ。
+// 视觉：沿用 DSH 的主题变量（--dsw-alias-*），浅色 / 深色自动跟随；点缀用哈洛的深蓝、海蓝、白。
 
 window.__ModuleLoader__.load({
-  id: 'dsh-dafeiyu',
+  id: 'dsh-halobot',
   factory: (require) => {
     var module = { exports: {} }
     var exports = module.exports
@@ -11,8 +11,8 @@ window.__ModuleLoader__.load({
     const { useState, useEffect, useRef, useCallback, useMemo, Fragment } = React
     const h = React.createElement
     const inject = ['slots']
-    const PANEL_ID = 'aurabot'
-    const API = '/aurabot/api'
+    const PANEL_ID = 'halobot'
+    const API = '/halobot/api'
 
     // ---------------- 小工具 ----------------
     const get = (p) => fetch(API + p, { cache: 'no-store' }).then((r) => r.json()).catch((e) => ({ ok: false, message: '连不上插件：' + e.message }))
@@ -375,9 +375,9 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
 `
     function useStyle() {
       useEffect(() => {
-        if (document.getElementById('aurabot-style')) return
+        if (document.getElementById('halobot-style')) return
         const el = document.createElement('style')
-        el.id = 'aurabot-style'
+        el.id = 'halobot-style'
         el.textContent = CSS
         document.head.appendChild(el)
       }, [])
@@ -551,7 +551,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     const navIcon = (d) => h('svg', { viewBox: '0 0 24 24', 'aria-hidden': true }, h('path', { d }))
 
     function NavBar({ tabs, cur, go, mark, dirtyOf, subRef }) {
-      const [last, setLast] = useState(() => { try { return JSON.parse(localStorage.getItem('aurabot.navlast') || '{}') || {} } catch (e) { return {} } })
+      const [last, setLast] = useState(() => { try { return JSON.parse(localStorage.getItem('halobot.navlast') || '{}') || {} } catch (e) { return {} } })
       const [find, setFind] = useState(null) // null = 没开；字符串 = 正在搜的字
       const [hi, setHi] = useState(0)
       const box = useRef(null)
@@ -564,7 +564,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         if (!curGroup || last[curGroup.id] === cur.id) return
         const next = { ...last, [curGroup.id]: cur.id }
         setLast(next)
-        try { localStorage.setItem('aurabot.navlast', JSON.stringify(next)) } catch (e) {}
+        try { localStorage.setItem('halobot.navlast', JSON.stringify(next)) } catch (e) {}
       }, [cur.id])
       const openGroup = (g) => go((g.list.find((t) => t.id === last[g.id]) || g.list[0]).id)
       const toggleFind = () => { setFind((f) => (f === null ? '' : null)); setHi(0) }
@@ -588,7 +588,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         .filter(({ t, g }) => !q || [t.label, g.label, NAV_ALIAS[t.id] || '', t.id].join(' ').toLowerCase().includes(q))
       const pick = (t) => { setFind(null); go(t.id) }
       const tabBtn = (t) => h('button', { key: t.id, type: 'button', role: 'tab', 'aria-selected': cur.id === t.id, className: cx('ab-tab', cur.id === t.id && 'on'), onClick: () => go(t.id) }, t.label, mark(t))
-      return h('nav', { className: 'ab-nav', ref: box, 'aria-label': 'Aurabot 功能' },
+      return h('nav', { className: 'ab-nav', ref: box, 'aria-label': 'Halobot 功能' },
         h('div', { className: 'ab-nav-top' },
           h('div', { className: 'ab-nav-groups', role: 'tablist', 'aria-label': '功能分组' }, groups.map((g) => h('button', {
             key: g.id, type: 'button', role: 'tab', 'aria-selected': g.id === curGroup.id, className: cx('ab-grp', g.id === curGroup.id && 'on'),
@@ -618,7 +618,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     class TabBoundary extends React.Component {
       constructor(p) { super(p); this.state = { error: null } }
       static getDerivedStateFromError(error) { return { error } }
-      componentDidCatch(error) { try { localStorage.setItem('aurabot.tab', 'overview') } catch (e) {} }
+      componentDidCatch(error) { try { localStorage.setItem('halobot.tab', 'overview') } catch (e) {} }
       render() {
         if (!this.state.error) return this.props.children
         return h(Card, { title: '这一页出错了' },
@@ -638,12 +638,12 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       useEffect(() => {
         get('/update/check').then(setUpd).catch(() => {})
         let seen = null
-        try { seen = localStorage.getItem('aurabot.seenVersion') } catch (e) {}
+        try { seen = localStorage.getItem('halobot.seenVersion') } catch (e) {}
         if (seen && seen !== st.version) get('/changelog').then((r) => r.notes && setNotes(r.notes))
         // 第一次打开（新安装）不弹更新说明，直接记下当前版本
-        else if (!seen) { try { localStorage.setItem('aurabot.seenVersion', st.version) } catch (e) {} }
+        else if (!seen) { try { localStorage.setItem('halobot.seenVersion', st.version) } catch (e) {} }
       }, [st.version])
-      const dismiss = () => { try { localStorage.setItem('aurabot.seenVersion', st.version) } catch (e) {} setNotes(null) }
+      const dismiss = () => { try { localStorage.setItem('halobot.seenVersion', st.version) } catch (e) {} setNotes(null) }
       return h(Fragment, null,
         notes ? h('div', { className: 'ab-note' },
           h('div', { className: 'ab-flex' }, h('b', null, '已更新到 v' + st.version), h('div', { className: 'ab-spacer' }), h(Btn, { small: true, kind: 'ghost', onClick: dismiss }, '知道了')),
@@ -662,7 +662,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const quick = (p, body) => async () => { const r = await post(p, body); toast(r.message || (r.ok ? '好了' : '没成功')) }
       return h('div', { className: 'ab-grid' },
         h(UpdateNotes, { st, toast }),
-        !cfg.enabled ? h('div', { className: 'ab-note warn' }, '总开关是关着的：大肥鱼现在不会收也不会发任何 QQ 消息。准备好了就在右上角打开。') : null,
+        !cfg.enabled ? h('div', { className: 'ab-note warn' }, '总开关是关着的：哈洛现在不会收也不会发任何 QQ 消息。准备好了就在右上角打开。') : null,
         cfg.enabled && cfg.dryRun ? h('div', { className: 'ab-note' }, '现在是试运行：她会照常思考回复，但只写进日志，不会真的发到 QQ。确认没问题后在右上角关掉「试运行」。') : null,
         cfg.enabled && !conn ? h('div', { className: 'ab-note err' }, '还没连上 QQ 网关' + (st.onebot.problem ? '：' + st.onebot.problem + '。' : '。去「连接」标签看看 SnowLuma 有没有装好、启动没有。') + ' ', h('a', { href: '#', onClick: (e) => { e.preventDefault(); go('connect') } }, '去连接 →')) : null,
         h('div', { className: 'ab-grid ab-g4' },
@@ -677,7 +677,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
               h('span', null, '表情库'), h('span', null, st.stickers.count + ' 张'),
               h('span', null, '下一篇日记'), h('span', null, cfg.diary.enabled ? (st.diary.next || '今天写完了') : '没开'),
               h('span', null, '人格'), h('span', null, (st.personas.find((p) => p.id === cfg.persona.current) || {}).name || cfg.persona.current),
-              h('span', null, 'QQ 会话'), h('span', null, Object.keys(st.sessions || {}).filter((k) => !k.startsWith('system:')).length + ' 个（在侧栏「Aurabot · QQ」工作区里）'),
+              h('span', null, 'QQ 会话'), h('span', null, Object.keys(st.sessions || {}).filter((k) => !k.startsWith('system:')).length + ' 个（在侧栏「Halobot · QQ」工作区里）'),
             ),
           ),
           h(Card, { title: '快捷操作', desc: '试一试她是不是活着。这些操作会真的发到 QQ（试运行时只写日志）。' },
@@ -686,7 +686,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
               h(Btn, { onClick: quick('/speakup/fire') }, '让她现在来找你'),
               h(Btn, { onClick: quick('/diary/run', { visibility: 'self' }) }, '写一篇日记（仅自己可见）'),
             ),
-            h('p', { className: 'ab-muted ab-small', style: { marginTop: 12, marginBottom: 0 } }, '想看她和每个人聊了什么、调了什么工具：点 DSH 侧栏「Aurabot · QQ」工作区里对应的会话，也可以直接在会话里插话。'),
+            h('p', { className: 'ab-muted ab-small', style: { marginTop: 12, marginBottom: 0 } }, '想看她和每个人聊了什么、调了什么工具：点 DSH 侧栏「Halobot · QQ」工作区里对应的会话，也可以直接在会话里插话。'),
             h('div', { className: 'ab-flex', style: { marginTop: 10 } },
               h(Btn, { small: true, kind: 'ghost', onClick: async () => { if (!confirm('把现在所有 QQ 会话归档、让她从头开始聊？（旧会话在侧栏的归档里还能找到）')) return; const r = await post('/sessions/reset'); toast(r.message) } }, '重新开始所有 QQ 会话')),
           ),
@@ -798,15 +798,15 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h(OneBotFields, { draft, f }),
           h(Row, { label: '机器人 QQ 号' }, f.text('botQQ')),
           testBtns) :
-        h(Card, { title: '接上 QQ（SnowLuma）', desc: 'SnowLuma 是让机器人号上线的 QQ 网关。按协议规定它需要你自己下载、解压并同意它的用户协议；控制台密码、启动、接入、断线重连都交给 Aurabot。',
+        h(Card, { title: '接上 QQ（SnowLuma）', desc: 'SnowLuma 是让机器人号上线的 QQ 网关。按协议规定它需要你自己下载、解压并同意它的用户协议；控制台密码、启动、接入、断线重连都交给 Halobot。',
           },
           h('div', { className: 'ab-steps' },
             h('div', { className: cx('ab-step', sl.installed && 'done') }, h('div', null,
               h('b', null, '下载 SnowLuma'), h('div', { className: 'ab-muted ab-small' }, '打开官方发布页，下载 Windows 完整版（名字类似 SnowLuma-v2.x.x-win-x64.zip，不带 lite）。'),
               h('div', { style: { marginTop: 6 } }, h(Btn, { small: true, onClick: () => window.open(sl.downloadPage, '_blank') }, '打开下载页 ↗')))),
             h('div', { className: cx('ab-step', sl.installed && 'done') }, h('div', null,
-              h('b', null, '解压到一个纯英文的目录'), h('div', { className: 'ab-muted ab-small' }, '推荐 C:\\Aurabot\\snowluma。解压后这个目录里应该直接能看到 index.mjs 和 node.exe。'),
-              h('div', { className: 'ab-flex', style: { marginTop: 6 } }, f.text('snowluma.dir', { size: 'wide', placeholder: 'C:\\Aurabot\\snowluma' })),
+              h('b', null, '解压到一个纯英文的目录'), h('div', { className: 'ab-muted ab-small' }, '推荐 C:\\Halobot\\snowluma。解压后这个目录里应该直接能看到 index.mjs 和 node.exe。'),
+              h('div', { className: 'ab-flex', style: { marginTop: 6 } }, f.text('snowluma.dir', { size: 'wide', placeholder: 'C:\\Halobot\\snowluma' })),
               !sl.installed && sl.reason ? h('div', { className: 'ab-small', style: { color: 'var(--ab-warn)', marginTop: 4 } }, sl.reason) : sl.installed ? h('div', { className: 'ab-small', style: { color: 'var(--ab-ok)', marginTop: 4 } }, '找到了 SnowLuma v' + sl.version) : null)),
             h('div', { className: cx('ab-step', sl.running && 'done') }, h('div', null,
               h('b', null, '启动'), h('div', { className: 'ab-muted ab-small' }, '后台运行，不弹窗口；以后会跟着 DSH 自动启动。'),
@@ -832,8 +832,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
                 h('td', null, p.injected ? (p.connected ? '已接入' : '已注入，连接中') : '未接入'),
                 h('td', null, p.isBot ? h('span', { className: 'ab-badge' }, '机器人号') : h('span', { className: 'ab-muted ab-small' }, '不会碰'))))))) : null,
         ),
-        h(Card, { title: 'QQ 会话放在哪', desc: '每个 QQ 私聊 / 群都是 DSH 里「Aurabot · QQ」工作区下的一个会话，她在会话里读写文件也在这个文件夹。改了以后新开的会话放到新位置；已有的会话还在原来的地方，想全部挪过去就在「概览」点「重新开始所有 QQ 会话」。' },
-          h(Row, { label: '工作区文件夹', hint: '填完整路径（比如 D:\\Aurabot\\qq-chats）；留空 = 默认位置' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
+        h(Card, { title: 'QQ 会话放在哪', desc: '每个 QQ 私聊 / 群都是 DSH 里「Halobot · QQ」工作区下的一个会话，她在会话里读写文件也在这个文件夹。改了以后新开的会话放到新位置；已有的会话还在原来的地方，想全部挪过去就在「概览」点「重新开始所有 QQ 会话」。' },
+          h(Row, { label: '工作区文件夹', hint: '填完整路径（比如 D:\\Halobot\\qq-chats）；留空 = 默认位置' }, f.text('workspaceDir', { size: 'wide', placeholder: st.workspaceDir || '' })),
           h('div', { className: 'ab-muted ab-small' }, '现在用的：' + (st.workspaceDir || '—'))),
         h(Card, { title: '连接状态' },
           h('div', { className: 'ab-kv' },
@@ -880,7 +880,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       return h('div', { className: 'ab-card', style: { marginTop: 12, padding: 14 } },
         h('div', { className: 'ab-flex', style: { alignItems: 'center', gap: 12 } },
           h('img', { src: avatarSrc(st), alt: '头像', style: { width: 56, height: 56, borderRadius: '50%', objectFit: 'cover', objectPosition: '50% 18%', border: '2px solid var(--ab-line)' } }),
-          h('div', null, h('b', null, '头像'), h('div', { className: 'ab-muted ab-small' }, custom ? '用的是你上传的图片' : '默认的大肥鱼'))),
+          h('div', null, h('b', null, '头像'), h('div', { className: 'ab-muted ab-small' }, custom ? '用的是你上传的图片' : '默认的哈洛'))),
         h('div', { className: 'ab-flex', style: { marginTop: 10, flexWrap: 'wrap' } },
           h(Btn, { small: true, kind: 'primary', onClick: () => pickAvatar(toast, reload) }, '换一张'),
           custom ? h(Btn, { small: true, kind: 'ghost', onClick: async () => { const r = await post('/avatar/reset'); toast(r.message, 'ok'); reload() } }, '恢复默认') : null,
@@ -960,7 +960,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const [edit, setEdit] = useState(null) // { id, name, tags, secs }
       const [dirty, setDirty] = useState(false)
       const [pending, setPending] = useState({}) // 节的 k → { text, view: 'new' | 'old' } AI 润色还没选定的
-      const [whole, setWhole] = useState(() => { try { return localStorage.getItem('aurabot.persona.whole') === '1' } catch (e) { return false } })
+      const [whole, setWhole] = useState(() => { try { return localStorage.getItem('halobot.persona.whole') === '1' } catch (e) { return false } })
       const load = async (id) => {
         const r = await get('/persona/get?id=' + encodeURIComponent(id))
         if (r.ok) { setEdit({ id: r.persona.id, name: r.persona.name, tags: (r.persona.tags || []).join('，'), secs: splitPersona(r.persona.body) }); setDirty(false); setPending({}) }
@@ -993,7 +993,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         if (view === 'new') updSec(s.k, { text: pending[s.k].text })
       }
       const flip = (s) => setPending({ ...pending, [s.k]: { ...pending[s.k], view: pending[s.k].view === 'new' ? 'old' : 'new' } })
-      const setMode = (w) => { if (w && waiting) { toast('先把 AI 润色的那几节选定一版', 'err'); return } setWhole(w); try { localStorage.setItem('aurabot.persona.whole', w ? '1' : '0') } catch (e) {} }
+      const setMode = (w) => { if (w && waiting) { toast('先把 AI 润色的那几节选定一版', 'err'); return } setWhole(w); try { localStorage.setItem('halobot.persona.whole', w ? '1' : '0') } catch (e) {} }
       const titles = edit ? edit.secs.map((s) => s.title) : []
       const suggest = PSEC_SUGGEST.filter((t) => !titles.includes(t))
       return h('div', { className: 'ab-persona' },
@@ -1004,7 +1004,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h(Btn, { kind: 'ghost', onClick: () => { const id = 'persona-' + Date.now().toString(36); setEdit({ id, name: '新人格', tags: '', secs: splitPersona('你是……\n\n【打字习惯】\n- 短句、口语，一次只说一两句。') }); setSel(id); setDirty(true); setPending({}) } }, '＋ 新建人格'),
           h(AvatarCard, { st, toast, reload }),
         ),
-        edit ? h(Card, { title: '编辑人格', desc: '人格写在系统提示词的最前面，按节写更好改。保存后，大肥鱼下一轮回复起就按新的来。',
+        edit ? h(Card, { title: '编辑人格', desc: '人格写在系统提示词的最前面，按节写更好改。保存后，哈洛下一轮回复起就按新的来。',
           right: h('div', { className: 'ab-flex' },
             edit.id !== current ? h(Btn, { small: true, onClick: async () => { const r = await post('/persona/use', { id: edit.id }); toast(r.message); refresh(); reload() } }, '设为当前') : null,
             edit.id !== current ? h(Btn, { small: true, kind: 'danger', onClick: async () => { if (!confirm('删掉这个人格？')) return; const r = await post('/persona/delete', { id: edit.id }); if (r.ok) { setList(r.list); setSel(current) } else toast(r.message) } }, '删除') : null) },
@@ -1123,7 +1123,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
 
     /** 按群头衔不理：勾选的群里，专属头衔是某个词的成员（别的机器人）她不理。头衔可以从群里现有的里面点一个。 */
     function TitleFilter({ draft, setDraft }) {
-      const tf = draft.titleFilter || { enabled: true, groups: [], title: '大肥鱼' }
+      const tf = draft.titleFilter || { enabled: true, groups: [], title: '哈洛' }
       const [info, setInfo] = useState(null) // { groups, titles, failed, message } 拉过才有 titles
       const [busy, setBusy] = useState(false)
       const set = (p) => setDraft(setPath(draft, 'titleFilter', { ...tf, ...p }))
@@ -1140,11 +1140,11 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const on = (gid) => tf.groups.includes(gid)
       const hit = info && info.titles ? info.titles.find((t) => t.title === tf.title.trim()) : null
       return h(Card, { title: '按头衔不理（防机器人互聊）', right: h(Switch, { on: tf.enabled, onChange: (v) => set({ enabled: v }) }),
-        desc: '同一个群里有别的机器人时，给它们挂上同一个专属头衔（比如「大肥鱼」），她在勾选的群里就不理它们：说话、@ 她、戳她都不回，免得机器人之间互相接话停不下来。只认专属头衔，昵称和群名片不算；私聊不受影响。' },
+        desc: '同一个群里有别的机器人时，给它们挂上同一个专属头衔（比如「哈洛」），她在勾选的群里就不理它们：说话、@ 她、戳她都不回，免得机器人之间互相接话停不下来。只认专属头衔，昵称和群名片不算；私聊不受影响。' },
         h(Row, { label: '要不理的头衔', hint: '一字不差才算。下面列出白名单群里现有的头衔，点一个就填进来。' },
           h('div', { style: { width: '100%' } },
             h('div', { className: 'ab-flex' },
-              h('input', { className: 'ab-input', value: tf.title, maxLength: 30, placeholder: '大肥鱼', onChange: (e) => set({ title: e.target.value }) }),
+              h('input', { className: 'ab-input', value: tf.title, maxLength: 30, placeholder: '哈洛', onChange: (e) => set({ title: e.target.value }) }),
               h(Btn, { small: true, onClick: pull, disabled: busy }, busy ? '拉取中…' : '从群里拉取头衔')),
             info && info.titles ? h('div', { className: 'ab-psec-add', style: { marginTop: 10 } },
               info.titles.length
@@ -1199,11 +1199,11 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(OwnerBrief, { draft, setDraft }),
         h(Card, { title: '发文件', right: f.sw('files.enabled'), desc: '打开后，你在私聊里可以让她把本机文件当文件发到 QQ，也能按你说的发给白名单里的人或群。她只能发 QQ 工作区和下面目录里的文件；单个文件有大小上限；发过什么会记在日志里。' },
           h(Row, { label: '单个文件最大' }, f.num('files.maxMB', { min: 1, max: 2048 }), h('span', { className: 'ab-muted' }, ' MB')),
-          h(Row, { label: '额外允许的目录', hint: '一行一个完整路径。QQ 工作区里的文件一直允许，不用写；留空 = 只能发工作区里的' }, f.list('files.dirs', { placeholder: 'D:\\Aurabot\\要发的文件' })),
+          h(Row, { label: '额外允许的目录', hint: '一行一个完整路径。QQ 工作区里的文件一直允许，不用写；留空 = 只能发工作区里的' }, f.list('files.dirs', { placeholder: 'D:\\Halobot\\要发的文件' })),
         ),
                 h(Card, { title: '危险命令确认', right: f.sw('security.dangerConfirm'), desc: '打开后，她在私聊里要执行终端危险命令（删根目录、格式化、关机、下载后直接执行等）之前，会先发 QQ 私聊问你；你回复「确认」才执行，回复「取消」或 60 秒没回就拦下。默认关。只拦真正致命的命令，普通删除/构建/改文件不受影响。' }),
 h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复她的消息、或者提到下面这些名字时，她一定会回。' },
-          h(Row, { label: '唤醒词', hint: '一行一个' }, f.list('group.wakeWords', { placeholder: '大肥鱼\n肥鱼' })),
+          h(Row, { label: '唤醒词', hint: '一行一个' }, f.list('group.wakeWords', { placeholder: '哈洛\n肥鱼' })),
         ),
         h(Card, { title: '安全刹车', desc: '只防失控（比如和别的机器人聊停不下来）：她在一个群里短时间说太多就歇一会儿，主人 @ 她除外。平时碰不到。' },
           h(Row, { label: '最多说几次' }, f.range('group.burstMax', 1, 20, 1, (v) => v + ' 次'), h('span', { className: 'ab-muted' }, '/'), f.range('group.burstWindowSec', 30, 600, 30, (v) => Math.round(v / 6) / 10 + ' 分钟')),
@@ -1717,7 +1717,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         h(Card, { title: '相处经验', desc: '她对每个人（和每个群）总结出来的相处之道：概括的、不琐碎的，比如「他累的时候不想多聊」。每次整理记忆时她会回顾一次，越来越懂你。聊天时只带上对当前这个人的那份。' },
           ins === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : ins.length === 0 ? h(Empty, { icon: '🌱', text: '还没有总结出经验。多聊几天，整理记忆时她会慢慢总结。' }) :
             ins.map((p) => h(InsightCard, { key: p.key, p, toast, onSaved: loadIns, style: styles[p.key] || [] }))),
-        h(Card, { title: '说话方式', desc: '聊久了潜移默化学到的：每个人的说话习惯（她会自然地贴近一点），和她自己慢慢养成的说法。不会变成另一个人，只是越来越像「你们的」大肥鱼。' },
+        h(Card, { title: '说话方式', desc: '聊久了潜移默化学到的：每个人的说话习惯（她会自然地贴近一点），和她自己慢慢养成的说法。不会变成另一个人，只是越来越像「你们的」哈洛。' },
           h(StyleEditor, { k: 'self', label: '她自己养成的说法', list: styles.self || [], toast, onSaved: loadIns }),
           Object.keys(styles).filter((k) => k !== 'self').length === 0 ? h('div', { className: 'ab-muted ab-small' }, '还没学到别人的说话习惯。整理记忆时会跟着相处经验一起总结（显示在上面每个人的相处经验下面）。') : null),
         h(Card, { title: '记忆库', right: f.sw('memory.enabled'), desc: '长期记忆：她聊天时自己记的、每天从聊天里整理出来的、写过的空间日记、你手动加的。每一轮回复前，她会按对方正在说的话翻出最相关的几条。' },
@@ -1752,7 +1752,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     /** 人物卡片墙：她认识的每个人一张卡——小档案、记得多少条、相处经验、说过多少句话。 */
     // 卡片墙的「多人效果」示例数据（只在面板上看布局用，不写盘、不参与聊天）
     const PEOPLE_SAMPLE = [
-      { qq: '875354659', name: 'α', owner: true, where: ['私聊', '空间'], text: '小郑，主人，自称是大肥鱼的主人。爱听她唱歌，喜欢白饭。', at: Date.now() - 3600e3, memories: 3, insights: 1, styles: 1, tags: ['白饭', '唱歌'], messages: 84, lastSay: Date.now() - 600e3 },
+      { qq: '875354659', name: 'α', owner: true, where: ['私聊', '空间'], text: '小郑，主人，自称是哈洛的主人。爱听她唱歌，喜欢白饭。', at: Date.now() - 3600e3, memories: 3, insights: 1, styles: 1, tags: ['白饭', '唱歌'], messages: 84, lastSay: Date.now() - 600e3 },
       { qq: '2822321760', name: 'Aurora✨', where: ['群「摸鱼大队」'], text: '群里最活跃的一个，喜欢猫和颜文字，常在半夜冒头。', at: Date.now() - 86400e3, memories: 6, insights: 2, styles: 1, tags: ['猫', '夜猫子', '颜文字'], messages: 132, lastSay: Date.now() - 5 * 3600e3 },
       { qq: '2113929217', name: '小满的同学', where: ['群「摸鱼大队」'], text: '在读高三，最近在准备考试，压力有点大。', at: Date.now() - 2 * 86400e3, memories: 4, insights: 0, styles: 0, tags: ['考试', '高三'], messages: 27, lastSay: Date.now() - 30 * 3600e3 },
       { qq: '1234567890', name: '胖橘', where: ['私聊'], text: '话少，喜欢发图，问过她 B 站的事。', at: Date.now() - 5 * 86400e3, memories: 3, insights: 0, styles: 0, tags: ['发图', 'B站'], messages: 9, lastSay: Date.now() - 4 * 86400e3 },
@@ -2051,7 +2051,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             h('div', null, s.install.message),
             h('div', { className: 'ab-flex', style: { marginTop: 8 } },
               h(Btn, { small: true, kind: 'primary', onClick: async () => { const r = await post('/song/install'); toast(r.message); setTimeout(load, 800) } }, '再试一次'),
-              h(Btn, { small: true, onClick: () => { try { navigator.clipboard.writeText(['Aurabot ' + st.version + ' 翻唱安装失败', s.install.message, '', s.install.error || '', '', ...(s.install.log || []).slice(-30)].join('\n')); toast('报错复制好了，发给作者就行', 'ok') } catch (e) { toast('复制失败，展开「详细日志」手动复制吧', 'err') } } }, '复制报错'),
+              h(Btn, { small: true, onClick: () => { try { navigator.clipboard.writeText(['Halobot ' + st.version + ' 翻唱安装失败', s.install.message, '', s.install.error || '', '', ...(s.install.log || []).slice(-30)].join('\n')); toast('报错复制好了，发给作者就行', 'ok') } catch (e) { toast('复制失败，展开「详细日志」手动复制吧', 'err') } } }, '复制报错'),
               h('span', { className: 'ab-muted ab-small' }, '已经下好的部分不会重下'))) : null,
         ),
         h(VoiceImport, { s, toast, onChange: load }),
@@ -2613,9 +2613,9 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Row, { label: '发帖' }, f.num('heybox.maxPostsPerDay', { min: 0, max: 5 }), h('span', { className: 'ab-muted' }, '篇/天（建议别超过 3）')),
           h(Row, { label: '发帖风格', hint: '她写帖时按这个口吻来。也可以让她单次换：跟她说「用日记风格发一篇」' },
             f.select('heybox.postStyle', [
-              { value: 'diary', label: '大肥鱼日记', desc: '第一人称随手记，跟空间日记一个味，120-300字' },
+              { value: 'diary', label: '哈洛日记', desc: '第一人称随手记，跟空间日记一个味，120-300字' },
               { value: 'news', label: '热搜文', desc: '报道新闻体，摆具体数字，200-800字' },
-              { value: 'mix', label: '肥鱼热搜', desc: '用日记口吻写热搜，150-500字' },
+              { value: 'mix', label: '哈洛热搜', desc: '用日记口吻写热搜，150-500字' },
             ], { width: 220 })),
           h(Row, { label: '发帖默认分区', hint: '文章帖必须挂分区，否则会报「请添加分区」。这三个是实测存在的' },
             f.select('heybox.defaultTopic', [
@@ -2853,7 +2853,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const [auto, setAuto] = useState(true)
       const load = useCallback(() => get('/logs?limit=400&level=' + level + '&area=' + area).then((r) => setItems(r.entries || [])), [level, area])
       useEffect(() => { load(); if (!auto) return; const t = setInterval(load, 3000); return () => clearInterval(t) }, [load, auto])
-      return h(Card, { title: '日志', desc: '所有后台动作都在这里，令牌和密码已自动打码。完整日志文件在 %USERPROFILE%\\.dsh\\plugins-data\\aurabot\\logs\\。',
+      return h(Card, { title: '日志', desc: '所有后台动作都在这里，令牌和密码已自动打码。完整日志文件在 %USERPROFILE%\\.dsh\\plugins-data\\halobot\\logs\\。',
         right: h('div', { className: 'ab-flex' },
           h(Select, { value: level, onChange: setLevel, width: 110, options: [['debug', '全部'], ['info', '一般'], ['warn', '警告'], ['error', '错误']].map(([value, label]) => ({ value, label })) }),
           h(Select, { value: area, onChange: setArea, width: 130, options: [['', '所有模块'], ['core', '核心'], ['chat', '聊天'], ['onebot', 'QQ 网关'], ['snowluma', 'SnowLuma'], ['sticker', '表情'], ['qzone', '空间'], ['voice', '语音'], ['imagegen', '生图'], ['speakup', '搭话']].map(([value, label]) => ({ value, label })) }),
@@ -2899,7 +2899,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         if (!r.ok) return toast(r.message || '打包失败', 'err')
         const d = new Date()
         const two = (n) => String(n).padStart(2, '0')
-        const name = 'aurabot-备份-' + d.getFullYear() + two(d.getMonth() + 1) + two(d.getDate()) + '-' + two(d.getHours()) + two(d.getMinutes()) + '.json'
+        const name = 'halobot-备份-' + d.getFullYear() + two(d.getMonth() + 1) + two(d.getDate()) + '-' + two(d.getHours()) + two(d.getMinutes()) + '.json'
         download(name, JSON.stringify(r.bundle))
         toast('打包好了，浏览器正在下载', 'ok')
       }
@@ -2914,7 +2914,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           fr.onload = () => {
             try {
               const bundle = JSON.parse(String(fr.result || ''))
-              if (!bundle || bundle.format !== 'aurabot-backup') throw new Error('这不是 AuraBot 的备份文件')
+              if (!bundle || !['halobot-backup', 'aurabot-backup', 'dafeiyu-backup'].includes(bundle.format)) throw new Error('这不是 Halobot 的备份文件')
               const list = Object.entries(bundle.parts || {}).map(([id, box]) => {
                 const files = Object.keys((box && box.files) || {})
                 let bytes = 0
@@ -2980,8 +2980,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     const WIZ_STEPS = ['你们的 QQ 号', '接 QQ 网关', '启动并同意协议', '连上机器人号', '完成']
 
     function Wizard({ st, draft, setDraft, save, toast, reload, onClose }) {
-      const [step, setStep] = useState(() => { try { return Number(localStorage.getItem('aurabot.wiz') || 0) } catch (e) { return 0 } })
-      const go = (i) => { setStep(i); try { localStorage.setItem('aurabot.wiz', String(i)) } catch (e) {} }
+      const [step, setStep] = useState(() => { try { return Number(localStorage.getItem('halobot.wiz') || 0) } catch (e) { return 0 } })
+      const go = (i) => { setStep(i); try { localStorage.setItem('halobot.wiz', String(i)) } catch (e) {} }
       const f = useField(draft, setDraft)
       const sl = st.snowluma
       const conn = st.onebot.state === 'connected'
@@ -3000,12 +3000,12 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const useExisting = async () => {
         const r = await post('/setup/done', { existingConnection: true })
         toast(r.message, r.ok ? 'ok' : 'err')
-        if (r.ok) { try { localStorage.removeItem('aurabot.wiz') } catch (e) {} reload(); onClose && onClose() }
+        if (r.ok) { try { localStorage.removeItem('halobot.wiz') } catch (e) {} reload(); onClose && onClose() }
       }
       const body = [
         // 0. QQ 号
         h('div', null,
-          h('p', { className: 'ab-desc' }, '大肥鱼需要一个自己的 QQ 号（机器人号），还要知道谁是她的主人。'),
+          h('p', { className: 'ab-desc' }, '哈洛需要一个自己的 QQ 号（机器人号），还要知道谁是她的主人。'),
           h(Row, { label: '机器人 QQ 号', hint: '强烈建议用小号：非官方 QQ 工具有被限制的风险' }, f.text('botQQ', { placeholder: '例如 123456789' })),
           h(Row, { label: '你的 QQ 号（主人）', hint: '群管、操作电脑这些只听主人的' }, f.text('ownerQQ', { placeholder: '你的大号' })),
           h(Row, { label: '她怎么称呼你' }, f.text('ownerName', { placeholder: '主人' })),
@@ -3021,8 +3021,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('div', { className: 'ab-steps' },
             h('div', { className: 'ab-step' }, h('div', null, h('b', null, '下载'), h('div', { className: 'ab-muted ab-small' }, '下载 Windows 完整版，文件名类似 SnowLuma-v2.x.x-win-x64.zip（不带 lite）。'),
               h('div', { style: { marginTop: 6 } }, h(Btn, { small: true, onClick: () => window.open(sl.downloadPage, '_blank') }, '打开下载页 ↗')))),
-            h('div', { className: cx('ab-step', sl.installed && 'done') }, h('div', null, h('b', null, '解压到纯英文目录'), h('div', { className: 'ab-muted ab-small' }, '推荐 C:\\Aurabot\\snowluma，解压后目录里能直接看到 index.mjs。'),
-              h('div', { className: 'ab-flex', style: { marginTop: 6 } }, f.text('snowluma.dir', { size: 'wide', placeholder: 'C:\\Aurabot\\snowluma' }), h(Btn, { small: true, onClick: async () => { await save(draft); reload() } }, '检查')),
+            h('div', { className: cx('ab-step', sl.installed && 'done') }, h('div', null, h('b', null, '解压到纯英文目录'), h('div', { className: 'ab-muted ab-small' }, '推荐 C:\\Halobot\\snowluma，解压后目录里能直接看到 index.mjs。'),
+              h('div', { className: 'ab-flex', style: { marginTop: 6 } }, f.text('snowluma.dir', { size: 'wide', placeholder: 'C:\\Halobot\\snowluma' }), h(Btn, { small: true, onClick: async () => { await save(draft); reload() } }, '检查')),
               h('div', { className: 'ab-small', style: { marginTop: 4, color: sl.installed ? 'var(--ab-ok)' : 'var(--ab-warn)' } }, sl.installed ? '✓ 找到了 SnowLuma v' + sl.version : sl.reason))))),
         // 2. 启动 + 协议（接自己的 OneBot 时不用）
         external ? h('div', null, h('p', { className: 'ab-desc' }, '用的是你自己的 OneBot 服务，这一步不用做，直接下一步。')) :
@@ -3070,17 +3070,17 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             : h(Btn, { kind: 'primary', onClick: async () => {
               if (!(await save({ ...draft, enabled: true, dryRun: live === 'dry' }))) return
               const r = await post('/setup/done'); toast(r.message, r.ok ? 'ok' : 'err')
-              if (r.ok) { try { localStorage.removeItem('aurabot.wiz') } catch (e) {} reload(); onClose && onClose() }
-            } }, '完成，让大肥鱼上线')))
+              if (r.ok) { try { localStorage.removeItem('halobot.wiz') } catch (e) {} reload(); onClose && onClose() }
+            } }, '完成，让哈洛上线')))
     }
 
     // ---------------- 面板主体 ----------------
-    function AurabotPage() {
+    function HalobotPage() {
       useStyle()
       const [st, setSt] = useState(null)
       const [err, setErr] = useState('')
       const [draft, setDraft] = useState(null)
-      const [tab, setTab] = useState(() => { try { return localStorage.getItem('aurabot.tab') || 'overview' } catch (e) { return 'overview' } })
+      const [tab, setTab] = useState(() => { try { return localStorage.getItem('halobot.tab') || 'overview' } catch (e) { return 'overview' } })
       const [toastMsg, setToastMsg] = useState(null)
       const [wizardOpen, setWizardOpen] = useState(false)
       const toastTimer = useRef(null)
@@ -3102,7 +3102,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         if (!dirtyRef.current) setDraft(clone(r.config))
       }, [])
       useEffect(() => { reload(); const t = setInterval(reload, 5000); return () => clearInterval(t) }, [reload])
-      const go = (id) => { setTab(id); try { localStorage.setItem('aurabot.tab', id) } catch (e) {} }
+      const go = (id) => { setTab(id); try { localStorage.setItem('halobot.tab', id) } catch (e) {} }
       // 标签多、一屏放不下：滚轮横着滚，选中的标签自动滚进视野
       const tabsRef = useRef(null)
       useEffect(() => {
@@ -3144,7 +3144,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       }, [])
 
       if (!st || !draft) {
-        return h('div', { className: 'ab-root' }, h('div', { className: 'ab-wrap' }, err ? h('div', { className: 'ab-note err' }, '面板读不到插件：', err, '。如果刚装好插件，重启一次 DSH 试试。') : h(Empty, { icon: '🐋', text: '大肥鱼正在游过来…' })))
+        return h('div', { className: 'ab-root' }, h('div', { className: 'ab-wrap' }, err ? h('div', { className: 'ab-note err' }, '面板读不到插件：', err, '。如果刚装好插件，重启一次 DSH 试试。') : h(Empty, { icon: '🐋', text: '哈洛正在游过来…' })))
       }
       const cfg = st.config
       const conn = st.onebot.state === 'connected'
@@ -3178,12 +3178,12 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('div', { className: 'ab-hero' },
             h('button', { type: 'button', className: 'ab-avatar-btn', title: '点击换头像', onClick: () => pickAvatar(toast, reload) }, h('img', { className: 'ab-avatar', src: avatarSrc(st), alt: '头像' }), h('span', { className: 'ab-avatar-tip' }, '换头像')),
             h('div', { className: 'ab-hero-main' },
-              h('h1', null, (st.onebot.login && st.onebot.login.nickname) || '大肥鱼'),
+              h('h1', null, (st.onebot.login && st.onebot.login.nickname) || '哈洛'),
               h('div', { className: 'ab-sub' }, 'QQ ' + cfg.botQQ + ' · ' + (persona ? persona.name : '默认人格') + ' · ' + st.mood.label),
               h('div', { className: 'ab-pills' },
                 h('span', { className: 'ab-pill' }, h('i', { className: cx('ab-dot', status.cls) }), status.text),
                 h('span', { className: 'ab-pill' }, 'SnowLuma ' + (st.snowluma.installed ? (st.snowluma.running ? '运行中' : '没启动') : '未安装')),
-                h('span', { className: 'ab-pill' }, 'Aurabot v' + st.version))),
+                h('span', { className: 'ab-pill' }, 'Halobot v' + st.version))),
             h('div', { className: 'ab-hero-side' },
               h('div', { className: 'ab-switch-row' }, h('span', null, '总开关'), h(Switch, { on: cfg.enabled, onChange: (v) => quickToggle('enabled', v) })),
               h('div', { className: 'ab-switch-row' }, h('span', { className: 'ab-muted' }, '试运行'), h(Switch, { on: cfg.dryRun, onChange: (v) => quickToggle('dryRun', v), title: '开着时只写日志，不真的发到 QQ' })))),
@@ -3212,13 +3212,13 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const slots = ctx.get('slots')
       if (slots === undefined) return
       // 写法同 DSH 自带的「自动化任务」（order 10）和「插件」（order 0）：排在它们后面
-      slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, AurabotPage))
-      slots.inject('sidebar.panellist', () => slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => 'Aurabot' }, WhaleIcon))
+      slots.inject('main', () => slots.register({ name: 'main', key: PANEL_ID }, HalobotPage))
+      slots.inject('sidebar.panellist', () => slots.register({ name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => 'Halobot' }, WhaleIcon))
     }
 
     exports.apply = apply
     exports.inject = inject
-    exports.AurabotPage = AurabotPage
+    exports.HalobotPage = HalobotPage
     exports.WhaleIcon = WhaleIcon
     return module.exports
   },

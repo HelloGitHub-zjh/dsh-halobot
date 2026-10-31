@@ -1,7 +1,7 @@
 // 群聊回复策略：什么时候必回、什么时候插话、什么时候闭嘴。纯函数，便于测试。
 
 export const DEFAULT_GROUP_POLICY = {
-  wakeWords: ['大肥鱼', '肥鱼'],
+  wakeWords: ['哈洛'],
   interjectChance: 0.15, // 普通消息的基础插话概率（话题越相关越高，最高 80%）
   cooldownSec: 90, // 两次插话至少间隔
   maxPerHour: 6, // 每群每小时插话上限
