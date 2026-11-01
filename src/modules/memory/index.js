@@ -54,6 +54,30 @@ export default {
           },
         }),
         defineTool({
+          name: 'forget_memory',
+          description: '把一件不该再记着的事忘掉（对方说「这个别记了」「忘了吧」，或者你发现自己记错了）。删掉后不再被想起，主人可以在面板里恢复。只在她明确表示不要记着的时候用，别自己随手删。',
+          properties: { text: str('要忘掉的那件事，尽量接近你记着的那句原话') },
+          required: ['text'],
+          execute: async ({ text }) => memory.forgetByText(String(text || '')),
+        }),
+        defineTool({
+          name: 'memory_summary',
+          description: '对方问「你记得我什么」「你都记了什么」时，把记得的事按类型列出来。',
+          properties: { about: str('关于谁，可选；不填就用当前这个人') },
+          required: [],
+          execute: async ({ about }) => memory.summaryByKind({ about: about ? '' : chat.kind === 'private' ? chat.userId : '', aboutName: about || chat.nickname || '' }),
+        }),
+        defineTool({
+          name: 'correct_memory',
+          description: '对方纠正你记错的事时用（「不对，是……」「你记错了」）：把记着的那条改成他现在的说法，旧说法会留在历史里。old 尽量接近你记着的原话。',
+          properties: {
+            old: str('你原来记着的那句'),
+            new: str('改成什么，一句话'),
+          },
+          required: ['old', 'new'],
+          execute: async ({ old, new: text }) => memory.correctByText({ oldText: String(old || ''), newText: String(text || '') }),
+        }),
+        defineTool({
           name: 'search_history',
           description: '翻聊天记录的原话（整理成记忆之前的原文，默认留 60 天）。要确认某件事「具体」是怎么说的、哪天说的、对方原话是什么，或者记忆里没有、但你们肯定聊过时用。',
           properties: {
@@ -86,6 +110,8 @@ export default {
     })
     api.route('/insights', async () => ({ ok: true, items: memory.insights(), styles: memory.styles() }))
     api.route('/memory/recalls', async () => ({ ok: true, list: memory.recalls() }))
+    // 检索质量：命中率与零命中的原话，面板拿来当优化清单
+    api.route('/memory/recall-stats', async () => memory.recallStats(7))
     api.route('/memory/restore', async (req) => memory.restore((await http.body(req)).id))
     api.route('/profiles', async () => ({ ok: true, list: memory.profiles() }))
     api.route('/profiles/save', async (req) => {

@@ -11,7 +11,7 @@
 // - 常驻的人物小档案（Letta 的 memory block）：每个人一小段印象，聊天时一直带着，不靠关键词碰运气。
 
 import { randomUUID } from 'node:crypto'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { dataDir, readJson, writeJson } from '../core/store.js'
 import { askModel } from '../core/llm.js'
@@ -64,6 +64,101 @@ export function buildIndex(items) {
  * @param {{about?:string|string[], now?:number, limit?:number, minScore?:number, includeInvalid?:boolean}} [o]
  *   about：关于这些人（QQ 号）的记忆加分；群里可以传这一段里所有说话的人
  */
+/** 「主人=小郑」「我=小郑」这样的别名，一行一组。 */
+export function parseAliases(list = []) {
+  const out = []
+  for (const raw of Array.isArray(list) ? list : []) {
+    const line = String(raw || '').trim()
+    if (!line) continue
+    const [a, b] = line.split(/[=＝]/).map((x) => x.trim())
+    if (a && b && a !== b) out.push([a, b])
+  }
+  return out.slice(0, 40)
+}
+
+/** 用别名把 query 换成别的说法（最多 3 个），补召回用。 */
+export function aliasVariants(query, pairs = [], limit = 3) {
+  const q = String(query || '')
+  const out = []
+  for (const [a, b] of pairs) {
+    for (const [from, to] of [[a, b], [b, a]]) {
+      if (!q.includes(from) || q.includes(to)) continue
+      const v = q.split(from).join(to)
+      if (v !== q && !out.includes(v)) out.push(v)
+      if (out.length >= limit) return out
+    }
+  }
+  return out
+}
+
+const CORRECT_RE = /(不对|不是这样|记错|说错|搞错|其实是|其实不是|我说的是|更正|纠正)/
+
+/** 这句话是不是在纠正她记错的事。 */
+export function correctionIntent(text) {
+  return CORRECT_RE.test(String(text || ''))
+}
+
+// ---------- 检索埋点：命中率与零命中的查询，面板拿来当优化清单 ----------
+
+const recallFile = () => dataDir('memory-recall.jsonl')
+
+/** 记一条检索结果（只写一行 JSON，失败就算了，不能影响回复）。 */
+export function recordRecall(entry = {}) {
+  try {
+    const file = recallFile()
+    let size = 0
+    try { size = statSync(file).size } catch (error) {}
+    if (size > 2 * 1024 * 1024) {
+      // 太大只留最后 2000 行，别让日志无限长
+      const lines = readFileSync(file, 'utf8').split('\n').filter(Boolean)
+      writeFileSync(file, lines.slice(-2000).join('\n') + '\n')
+    }
+    appendFileSync(file, JSON.stringify({ at: Date.now(), ...entry }) + '\n')
+  } catch (error) {}
+}
+
+/** 最近 N 天的检索质量：次数、零命中、平均想起几条、零命中的原话。 */
+export function recallStats(days = 7) {
+  const out = { ok: true, calls: 0, zero: 0, used: 0, zeroRate: null, avgUsed: null, days: [], recentZero: [] }
+  let text = ''
+  try { text = readFileSync(recallFile(), 'utf8') } catch (error) { return out }
+  const since = Date.now() - Math.max(1, Number(days) || 7) * 86400_000
+  const byDay = new Map()
+  for (const line of text.split('\n')) {
+    if (!line) continue
+    let e = null
+    try { e = JSON.parse(line) } catch (error) { continue }
+    if (!e || !e.at || e.at < since) continue
+    const dt = new Date(e.at)
+    const day = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    const row = byDay.get(day) || { day, calls: 0, zero: 0, used: 0 }
+    row.calls++
+    row.used += Number(e.used) || 0
+    if (e.zero) {
+      row.zero++
+      if (out.recentZero.length < 12) out.recentZero.push({ at: e.at, query: e.query || '', where: e.where || '' })
+    }
+    byDay.set(day, row)
+    out.calls++
+    out.used += Number(e.used) || 0
+    if (e.zero) out.zero++
+  }
+  out.days = [...byDay.values()].sort((a, b) => (a.day < b.day ? -1 : 1))
+  if (out.calls) {
+    out.zeroRate = Number((out.zero / out.calls).toFixed(3))
+    out.avgUsed = Number((out.used / out.calls).toFixed(2))
+  }
+  return out
+}
+
+/** 把「你 / 您」换成正在说话的人的名字，检索时更容易对上那个人。 */
+export function rewriteQuery(query, { aboutName = '' } = {}) {
+  const q = String(query || '')
+  const name = String(aboutName || '').trim()
+  if (!q || !name) return q
+  return q.replace(/[你您]/g, name)
+}
+
 export function search(idx, query, o = {}) {
   const q = [...new Set(tokenize(query))]
   const now = o.now ?? Date.now()
@@ -621,16 +716,24 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     if (hitTimer && typeof hitTimer.unref === 'function') hitTimer.unref()
   }
 
-  function recall(query, { about, limit, where = '', context = '', range = null, includeExpired = false } = {}) {
+  function recall(query, { about, aboutName = '', limit, where = '', context = '', range = null, includeExpired = false } = {}) {
     const max = limit ?? (Number(getConfig().memory.recallMax) || Number(getConfig().memory.recallCount) || 6)
-    const hits = search(index(), query, { about, limit: max, range, includeExpired })
+    const pairs = parseAliases(getConfig().memory?.aliases)
+    const said = String(query || '')
+    const base = rewriteQuery(said, { aboutName }) || said
+    const variants = aliasVariants(base, pairs)
+    const hits = search(index(), base, { about, limit: max, range, includeExpired })
     const have = new Set(hits.map((h) => h.it.id))
     const push = (h, weight, tag) => {
       if (hits.length >= max || have.has(h.it.id)) return
       have.add(h.it.id)
       hits.push({ ...h, score: h.score * weight, why: [...(h.why || []), ...(tag ? [tag] : [])] })
     }
-    const extra = expandTerms(query, hits)
+    for (const v of variants) {
+      if (hits.length >= max) break
+      for (const h of search(index(), v, { about, limit: max, minScore: 0.3, range, includeExpired })) push(h, 0.9, '（换个叫法）')
+    }
+    const extra = expandTerms(base, hits)
     if (!hits.length) {
       // 一条都没命中（换个说法差得远）：退回字面兜底，别明明记得却想不起来
       for (const h of looseSearch(load().items.filter((m) => !m.invalidAt && (includeExpired || !m.validTo || m.validTo > Date.now())), query, { limit: max })) push(h, 0.6, '')
@@ -643,6 +746,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     }
     hits.sort((a, b) => b.score - a.score)
     recallLog.unshift({ at: Date.now(), where, query: String(query).slice(0, 120), hits: hits.map((h) => ({ id: h.it.id, text: h.it.text, score: Number(h.score.toFixed(2)), why: h.why || [] })) })
+    recordRecall({ where, query: said.slice(0, 120), used: hits.length, zero: hits.length === 0, variants: variants.length })
     recallLog.length = Math.min(recallLog.length, 20)
     if (hits.length) stageHits(hits)
     return hits
@@ -853,6 +957,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const recent = recentEvents()
     const shown = new Set(recent.map((m) => m.id))
     const about = chat && chat.kind === 'private' ? chat.userId : undefined
+    const aboutName = (about && (load().profiles || {})[String(about)]?.name) || (chat && chat.kind !== 'group' ? chat.nickname || '' : '') || ''
     // 上一句一直当线索带着：「然后呢」「那个呢」靠它接上，说到一半换了话题也不至于断
     const ctxText = String(prevText || '').slice(-300)
     // 条数不写死：命中得多就多给两条，寒暄就少给，别硬塞
@@ -860,9 +965,9 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const minN = Math.min(maxN, Math.max(1, Number(cfg.recallMin) || 3))
     const range = cfg.timeBoost === false ? null : timeWindow(q)
     const strict = cfg.strictValid !== false
-    let found = recall(q, { about, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: !strict }).filter((h) => !shown.has(h.it.id))
+    let found = recall(q, { about, aboutName, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: !strict }).filter((h) => !shown.has(h.it.id))
     // 只算「还有效的」时一条都没有：把以前的说法也翻出来，但标清楚是旧的
-    if (!found.length) found = recall(q, { about, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: true, includeInvalid: true }).filter((h) => !shown.has(h.it.id))
+    if (!found.length) found = recall(q, { about, aboutName, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: true, includeInvalid: true }).filter((h) => !shown.has(h.it.id))
     const strong = found.filter((h) => h.score >= 0.5).length
     const keep = Math.min(maxN, Math.max(minN, Math.ceil(strong * 1.5)))
     const hits = found.slice(0, keep)
@@ -870,7 +975,60 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const cap = Math.max(100, Number(cfg.recallMaxChars) || 500)
     let body = hits.map((h) => memoryLine(h.it)).join('；')
     if (body.length > cap) body = body.slice(0, cap) + '…'
-    return ['（你记得这些事，方括号里是什么时候的事，聊到相关的就自然用上，别把老事当新事说，也别说「根据记忆」：' + body + '）', backdrop].filter(Boolean).join('\n')
+    const fix = correctionIntent(q) ? '（对方像是在纠正上面某一条；如果确实是记错了，用 correct_memory 把那条改成他的说法，别嘴硬）\n' : ''
+    return [fix + '（你记得这些事，方括号里是什么时候的事，聊到相关的就自然用上，别把老事当新事说，也别说「根据记忆」：' + body + '）', backdrop].filter(Boolean).join('\n')
+  }
+
+  /** 她主动忘掉一条（对方说「这个别记了」）：按话找最像的一条标失效，可恢复。 */
+  function forgetByText(text) {
+    const q = String(text || '').trim()
+    if (!q) return { ok: false, message: '要忘掉的是哪件事？说具体一点。' }
+    const hits = search(index(), q, { limit: 3 }).filter((h) => !h.it.invalidAt)
+    if (!hits.length || hits[0].score < 0.45) return { ok: false, message: '没找到很像的那条，换个说法再试试。' }
+    const best = hits[0].it
+    const n = invalidate(best.id, '')
+    if (!n) return { ok: false, message: '没找到很像的那条，换个说法再试试。' }
+    save(load())
+    log.info(`她忘掉了一条：${String(best.text).slice(0, 40)}`)
+    return { ok: true, message: '好，那件我不记着了。' }
+  }
+
+  /** 对方纠正她说错了：按话找到那条，改成新说法（旧说法进 history，面板看得到）。 */
+  function correctByText({ oldText = '', newText = '' } = {}) {
+    const q = String(oldText || '').trim()
+    const t = String(newText || '').trim()
+    if (!q || !t) return { ok: false, message: '要说清楚改哪条、改成什么。' }
+    const hits = search(index(), q, { limit: 3 }).filter((h) => !h.it.invalidAt)
+    if (!hits.length || hits[0].score < 0.4) return { ok: false, message: '没找到很像的那条，可能要说得更具体（比如把原话里的词带一句）。' }
+    const best = hits[0].it
+    if (!revise(best.id, t)) return { ok: false, message: '没改成，稍后再试。' }
+    log.info(`改正了一条记忆：${String(best.text).slice(0, 30)} → ${t.slice(0, 30)}`)
+    return { ok: true, message: '好，我改过来了。' }
+  }
+
+  /** 对方问「你记得我什么」：按类型列一下，最多 12 条。 */
+  function summaryByKind({ about = '', aboutName = '' } = {}) {
+    const s = load()
+    const now = Date.now()
+    const qq = String(about || '').trim()
+    const name = String(aboutName || '').trim()
+    const items = (s.items || []).filter((m) => {
+      const it = normalizeItem(m)
+      if (it.invalidAt) return false
+      if (it.validTo && it.validTo < now) return false
+      if (!qq && !name) return true
+      return String(it.about || '') === qq || (name && String(it.text || '').includes(name))
+    })
+    if (!items.length) return { ok: true, text: '我这边还没记下什么。' }
+    const byKind = new Map()
+    for (const m of items) {
+      const k = KIND_LABEL[m.kind] || KIND_LABEL.fact
+      if (!byKind.has(k)) byKind.set(k, [])
+      byKind.get(k).push(String(m.text || ''))
+    }
+    const lines = [`我记着这些（共 ${items.length} 条）：`]
+    for (const [k, list] of byKind) lines.push(`· ${k}（${list.length}）：${list.slice(0, 3).join('；')}${list.length > 3 ? '…' : ''}`)
+    return { ok: true, text: lines.join('\n') }
   }
 
   /** 回顾：结合最近聊天和已有经验，更新这个人的相处经验（合并、提炼、最多 8 条，概括不琐碎）。 */
@@ -1159,7 +1317,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
   return {
     recallHint,
     add, addEvent, recentEvents, update, remove, restore, recall, contextFor, consolidate, tick, topicScore, importCandidates, importCommit,
-    searchHistory, archiveChatLog, pruneArchive, historyStats, supersede, flushHits,
+    searchHistory, archiveChatLog, pruneArchive, historyStats, supersede, flushHits, recallStats, forgetByText, summaryByKind, correctByText,
     profiles: () => { const s = load(); return Object.entries(s.profiles || {}).map(([qq, p]) => ({ qq, ...p })).sort((a, b) => b.at - a.at) },
     setProfile, buildProfile, people,
     recalls: () => recallLog.slice(),

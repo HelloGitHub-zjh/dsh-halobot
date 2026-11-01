@@ -232,7 +232,7 @@ export const DEFAULTS = {
   // judge：每轮聊完用模型判心情（更准）。judgeChance 只抽一部分轮次判，judgeCooldownSec 两次判定至少隔多久，
   // judgeMinDelta 小于这个变化就不写盘（防抖）；关掉 judge 就只按关键词打分
   mood: { enabled: true, halfLifeHours: 3, judge: false, judgeChance: 0.25, judgeCooldownSec: 120, judgeMinDelta: 4 },
-  memory: { enabled: true, recallCount: 6, writeDebounceMs: 30000, recallMin: 3, recallMax: 8, recallMaxChars: 500, timeBoost: true, strictValid: true, dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
+  memory: { enabled: true, recallCount: 6, writeDebounceMs: 30000, recallMin: 3, recallMax: 8, recallMaxChars: 500, timeBoost: true, strictValid: true, aliases: [], dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
   song: {
     enabled: false,
     root: '', // 翻唱环境目录，留空 = 自动（老安装 C:\Halobot\rvc，新安装在用户目录下）
@@ -463,6 +463,8 @@ export function normalize(raw) {
   c.memory.recallMaxChars = num(c.memory.recallMaxChars, 500, 100, 2000)
   c.memory.timeBoost = bool(c.memory.timeBoost, true)
   c.memory.strictValid = bool(c.memory.strictValid, true)
+  // 别名：一行一组「主人=小郑」，检索时互相替换，少漏明显相关的记忆
+  c.memory.aliases = Array.isArray(c.memory.aliases) ? c.memory.aliases.map((x) => String(x || '').trim().slice(0, 40)).filter(Boolean).slice(0, 40) : []
   if (!isObj(c.background)) c.background = { perDay: 8 }
   c.background.perDay = num(c.background.perDay, 8, 0, 200)
   g.interests = (Array.isArray(g.interests) ? g.interests : String(g.interests || '').split(/[\s,，]+/)).map((s) => String(s).trim()).filter(Boolean)

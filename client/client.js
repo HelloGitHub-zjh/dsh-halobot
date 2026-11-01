@@ -1992,13 +1992,14 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const [showExpired, setShowExpired] = useState(false)
       const load = (query) => get('/memories?q=' + encodeURIComponent(query ?? q)).then((r) => { setMem(r.items || []); setStats(r.stats || null) })
       const [styles, setStyles] = useState({})
+      const [rs, setRs] = useState(null)
       const loadIns = () => get('/insights').then((r) => { setIns(r.items || []); setStyles(r.styles || {}) })
       const times = draft.memory.consolidateTimes || []
       const setTime = (i, v) => { const t = times.slice(); t[i] = v; setDraft(setPath(draft, 'memory.consolidateTimes', t)) }
       const addTime = () => { const t = times.slice(); t.push('12:00'); setDraft(setPath(draft, 'memory.consolidateTimes', t.slice(0, 4))) }
       const delTime = (i) => { const t = times.filter((_, k) => k !== i); setDraft(setPath(draft, 'memory.consolidateTimes', t.length ? t : ['04:00'])) }
       const memOn = modOn(st, 'memory')
-      useEffect(() => { if (memOn) { load(''); loadIns() } }, [memOn])
+      useEffect(() => { if (memOn) { load(''); loadIns(); get('/memory/recall-stats').then(setRs).catch(() => {}) } }, [memOn])
       useEffect(() => { if (!memOn) return; const t = setTimeout(() => load(q), 250); return () => clearTimeout(t) }, [q])
       const pgi = usePager(ins || [])
       const shownMem = (mem || []).filter((m) => (!kindFilter || (m.kind || 'fact') === kindFilter) && (showExpired || !m.invalidAt))
@@ -2076,7 +2077,20 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             h('span', { className: 'ab-muted' }, '最多'), f.num('memory.recallMax', { min: 1, max: 20 })),
           h(Row, { label: '最多占多少字', hint: '这几条拼起来的总字数上限，超了按分数从低往高截' }, f.num('memory.recallMaxChars', { min: 100, max: 2000 })),
           h(Row, { label: '按「上次 / 那天」加权', hint: '问句里带时间词（昨天、上个月、三天前…）时，那个时间段的记忆更容易被想起；只加分，不会把别的排除掉' }, f.sw('memory.timeBoost')),
-          h(Row, { label: '只说还有效的', hint: '开着：被新事实取代的旧说法不再塞给她；关着：新旧都参与，可能把过时的说法当成现在的事' }, f.sw('memory.strictValid'))),
+          h(Row, { label: '只说还有效的', hint: '开着：被新事实取代的旧说法不再塞给她；关着：新旧都参与，可能把过时的说法当成现在的事' }, f.sw('memory.strictValid')),
+          h(Row, { label: '称呼别名', hint: '一行一组，等号两边是同一个人或同一个东西的两种叫法（主人=小郑、白米饭=米饭），检索时会互相替换，少漏明显相关的记忆' },
+            f.list('memory.aliases', { placeholder: '主人=小郑\n白米饭=米饭' }))),
+        h('div', { className: 'ab-section-title' }, '检索质量（近 7 天）'),
+        h(Card, { title: '想起得准不准', desc: '每次回复前翻记忆都会记一笔：翻到了几条、有没有一条都没翻到。零命中的那些话就是优化素材——多半是说法不一样，去上面「称呼别名」补一组就成。' },
+          !rs ? h(Empty, { icon: '⏳', text: '加载中…' }) : h('div', null,
+            h('div', { className: 'ab-metrics' },
+              [['检索次数', rs.calls], ['零命中', rs.zero], ['零命中率', rs.zeroRate === null ? '—' : Math.round(rs.zeroRate * 100) + '%'], ['平均想起', rs.avgUsed === null ? '—' : rs.avgUsed + ' 条']]
+                .map(([l, n]) => h('div', { key: l, className: 'ab-metric' }, h('div', { className: 'n' }, n), h('div', { className: 'l' }, l)))),
+            rs.recentZero && rs.recentZero.length
+              ? h('div', { style: { marginTop: 12 } },
+                h('div', { className: 'ab-small ab-muted', style: { marginBottom: 6 } }, '最近没翻到东西的几句：'),
+                rs.recentZero.slice(0, 8).map((z, i) => h('div', { key: i, className: 'ab-small', style: { padding: '3px 0', color: 'var(--ab-sub)' } }, '· ' + z.query)))
+              : h('div', { className: 'ab-small ab-muted', style: { marginTop: 10 } }, '近 7 天没有零命中，或者还没开始记。'))),
 
         // ⑤ 沉淀：从聊天里长出来的东西
         h('div', { className: 'ab-section-title' }, '她沉淀下来的'),
