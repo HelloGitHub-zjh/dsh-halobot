@@ -57,7 +57,7 @@ export const DEFAULTS = {
   merge: { enabled: true, waitSec: 2.5, maxSec: 8, groupWaitSec: 5, groupMaxSec: 15 }, // 连发合并：对方停顿 waitSec 秒再一起回，最多等 maxSec 秒；群里等得久一点，把一段话攒齐
   imageGen: {
     enabled: false,
-    provider: 'openai', // openai / custom；codex = 实验性订阅接法（需单独登录）
+    provider: 'zhipu', // zhipu = 智谱 BigModel（默认）/ custom = 自定义接口；老的 openai、codex 已下线
     baseUrl: '',
     apiKey: '',
     model: '',
@@ -68,7 +68,7 @@ export const DEFAULTS = {
     seeOwn: true, // 「让她画完自己看一眼」：开着才把画好的图交给她看
     galleryShown: 20, // 面板「她的画作」显示最近几张（1~50；只影响显示，不删文件）
     // 自定义接法：url 里可以用 {prompt} {model} {size} {width} {height}；params 是参数名/值（值里也能用这些占位符）
-    custom: { method: 'GET', url: '', bodyType: 'json', responsePath: '', params: [] },
+    custom: { method: 'GET', url: '', bodyType: 'json', responsePath: '', body: '', params: [] },
     // 实验性订阅接法；登录令牌独立保存在数据目录，不进入配置。
     codex: { model: 'gpt-image-2', quality: 'auto', background: 'auto' },
   },
@@ -487,8 +487,12 @@ export function normalize(raw) {
   c.imageGen.galleryShown = Math.min(50, Math.max(1, Math.round(Number(c.imageGen.galleryShown) || 20)))
   c.imageGen.shape = ['her', 'square', 'portrait', 'landscape', 'wide'].includes(c.imageGen.shape) ? c.imageGen.shape : 'her'
 
-  // provider：custom = 自己填接口（GET/POST + 自定义参数），其它按 OpenAI 兼容
-  c.imageGen.provider = ['custom', 'codex'].includes(c.imageGen.provider) ? c.imageGen.provider : 'openai'
+  // provider：zhipu = 智谱 BigModel（默认），custom = 自己填接口（GET/POST + 自定义参数）
+  // 老的 openai / codex 配置已下线，这里统一落到智谱，避免选不到的服务继续被调用
+  c.imageGen.provider = c.imageGen.provider === 'custom' ? 'custom' : 'zhipu'
+  // 智谱：模型留空就用 cogview-4；只填模型不填地址（地址写死在 features/imagegen.js）
+  c.imageGen.model = String(c.imageGen.model || '').trim().slice(0, 120)
+  if (c.imageGen.provider === 'zhipu' && !c.imageGen.model) c.imageGen.model = 'cogview-4'
   if (!isObj(c.imageGen.codex)) c.imageGen.codex = { ...DEFAULTS.imageGen.codex }
   const igx = c.imageGen.codex
   igx.model = ['gpt-image-2', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst'].includes(igx.model) ? igx.model : 'gpt-image-2'
@@ -500,6 +504,8 @@ export function normalize(raw) {
   igc.bodyType = igc.bodyType === 'form' ? 'form' : 'json'
   igc.url = String(igc.url || '').trim().slice(0, 2000)
   igc.responsePath = String(igc.responsePath || '').trim().slice(0, 200)
+  // 请求体模板：填了就整段发出去（{prompt} 等占位符会替换），没填仍用下面的参数表拼
+  igc.body = String(igc.body || '').slice(0, 6000)
   igc.params = (Array.isArray(igc.params) ? igc.params : [])
     .map((p) => ({ key: String((p && p.key) || '').trim().slice(0, 60), value: String(p && p.value != null ? p.value : '').slice(0, 500) }))
     .filter((p) => p.key)
@@ -614,6 +620,38 @@ export function publicConfig(cfg) {
     p[k] = ''
   }
   return c
+}
+
+/**
+ * 「主动搭话」和「目的引擎」互斥：同一时间只能开一个。
+ * 依据这次保存里谁被打开了，把另一个关掉；两个都没动就保持原样。
+ * 返回 { config, disabled }，disabled 是被关掉的那个（'' 表示没动）。
+ */
+export function enforceAutoExclusive(next, prev) {
+  if (!next || typeof next !== 'object') return { config: next, disabled: '' }
+  const speakNow = next.speakUp?.enabled === true
+  const purposeNow = next.ext?.purpose?.enabled === true
+  if (!speakNow || !purposeNow) return { config: next, disabled: '' }
+  const speakWas = prev?.speakUp?.enabled === true
+  const purposeWas = prev?.ext?.purpose?.enabled === true
+  const speakChanged = speakNow !== speakWas
+  const purposeChanged = purposeNow !== purposeWas
+  if (speakChanged && purposeChanged) {
+    // 一次保存里两个都开了：留「主动搭话」（老开关，行为更可控）
+    next.ext = { ...next.ext, purpose: { ...(next.ext?.purpose || {}), enabled: false } }
+    return { config: next, disabled: 'purpose' }
+  }
+  if (speakChanged) {
+    next.ext = { ...next.ext, purpose: { ...(next.ext?.purpose || {}), enabled: false } }
+    return { config: next, disabled: 'purpose' }
+  }
+  if (purposeChanged) {
+    next.speakUp = { ...next.speakUp, enabled: false }
+    return { config: next, disabled: 'speakUp' }
+  }
+  // 老配置里两个都开着、这次又都没动：也顺手收一下，保证「同一时间只跑一套」
+  next.ext = { ...next.ext, purpose: { ...(next.ext?.purpose || {}), enabled: false } }
+  return { config: next, disabled: 'purpose' }
 }
 
 /** 面板保存时：没改的密码字段（空串）保留原值。 */

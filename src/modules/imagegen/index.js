@@ -51,6 +51,20 @@ export default {
       const b = await api.core.http.body(req).catch(() => ({}))
       return removePainting(String((b && b.file) || ''))
     })
+    // 面板上的「试画一张」：用固定提示词真的画一张，回来确认服务通不通（会花一次额度）
+    api.route('/image/test', async () => {
+      const t = Date.now()
+      try {
+        const buf = await gen.generate('一只胖乎乎的蓝色小鱼，插画', { shape: 'square' })
+        const out = { ok: true, bytes: buf.length, kb: Math.round(buf.length / 1024), ms: Date.now() - t }
+        // 小图直接带回去给面板预览；太大就不塞了，免得响应慢
+        if (buf.length <= 2 * 1024 * 1024) out.dataUrl = 'data:' + String(mimeOf(buf) || 'image/png') + ';base64,' + buf.toString('base64')
+        return out
+      } catch (error) {
+        return { ok: false, message: error && error.message ? error.message : String(error), ms: Date.now() - t }
+      }
+    })
+
     api.route('/image/open-folder', async () => openPaintFolder())
 
     api.tool(({ chat, sessionId }) => (gen.enabled() && chat.kind !== 'system' ? defineTool({

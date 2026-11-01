@@ -1,6 +1,7 @@
 // 生图：OpenAI 兼容、自定义接口，以及实验性 Codex 订阅接法。
 //   ① openai —— 兼容 OpenAI /v1/images/generations 的服务（硅基流动、通义万相兼容层、本地 ComfyUI / SD WebUI 的 OpenAI 代理……）
 //   ② custom —— 自己填接口：GET / POST、URL 模板（{prompt} 占位）、自定义参数名、从返回 JSON 里按路径取图
+//   ③ zhipu —— 智谱 BigModel（cogview-4 / glm-image / cogview-3-flash），地址写死，只需要填 Key 和模型
 // 地址和密钥由主人在面板里填；生成结果统一成 Buffer 交给 QQ 发出。
 
 import { fetchImage } from '../core/net.js'
@@ -56,6 +57,7 @@ function findImage (obj, depth = 0) {
 /**
  * 自定义接口这一次要发什么（纯函数，方便单独测）。
  * 返回 { url, method, headers, body }。
+ * POST 时如果填了 custom.body（请求体模板），整段按模板发，参数表只在对 GET 时拼 URL 用。
  */
 export function customRequest (imageGen, prompt) {
   const cp = imageGen.custom || {}
@@ -78,14 +80,21 @@ export function customRequest (imageGen, prompt) {
 
   let body
   if (method === 'POST') {
-    const obj = {}
-    for (const p of params) obj[p.key] = fill(p.value, raw)
-    if (cp.bodyType === 'form') {
-      headers['content-type'] = 'application/x-www-form-urlencoded'
-      body = new URLSearchParams(obj).toString()
+    const rawBody = String(cp.body || '').trim()
+    if (rawBody) {
+      // 填了请求体模板：整段发出去（{prompt} {model} {size} {width} {height} 会替换），参数表就不参与 body 了
+      headers['content-type'] = cp.bodyType === 'form' ? 'application/x-www-form-urlencoded' : 'application/json'
+      body = fill(rawBody, raw)
     } else {
-      headers['content-type'] = 'application/json'
-      body = JSON.stringify(obj)
+      const obj = {}
+      for (const p of params) obj[p.key] = fill(p.value, raw)
+      if (cp.bodyType === 'form') {
+        headers['content-type'] = 'application/x-www-form-urlencoded'
+        body = new URLSearchParams(obj).toString()
+      } else {
+        headers['content-type'] = 'application/json'
+        body = JSON.stringify(obj)
+      }
     }
   }
   return { url, method, headers, body }
@@ -98,6 +107,33 @@ async function valueToBuffer (v) {
   if (b64) return Buffer.from(b64[1], 'base64')
   if (/^https?:\/\//i.test(v)) return fetchImage(v, { maxBytes: 20 * 1024 * 1024, allowLocal: false, timeoutMs: 120000 })
   throw new Error('生图接口返回的既不是图片地址也不是图片')
+}
+
+/** 智谱图像生成接口；换代理可以用 HALOBOT_ZHIPU_API 覆盖。 */
+const ZHIPU_API = () => process.env.HALOBOT_ZHIPU_API || 'https://open.bigmodel.cn/api/paas/v4/images/generations'
+/** 智谱认的枚举尺寸（长宽 512–2048、16 的倍数、总像素 ≤ 2^21）。 */
+const ZHIPU_SIZES = [[1024, 1024], [768, 1344], [864, 1152], [1344, 768], [1152, 864], [1440, 720], [720, 1440]]
+/** 模型下线时按这个顺序退。 */
+const ZHIPU_FALLBACK = ['glm-image', 'cogview-3-flash']
+
+/**
+ * 把面板里的尺寸换成智谱认的尺寸（纯函数）。
+ * 智谱文档只列了七种固定尺寸，为保证兼容一律在上面挑比例最接近的（同比例时挑面积更接近的）。
+ */
+export function zhipuSize (size) {
+  const m = /(\d+)\s*[x×*]\s*(\d+)/i.exec(String(size || ''))
+  let w = m ? Number(m[1]) : 1024
+  let h = m ? Number(m[2]) : 1024
+  if (!(w > 0 && h > 0)) { w = 1024; h = 1024 }
+  for (const [a, b] of ZHIPU_SIZES) if (a === w && b === h) return `${a}x${b}`
+  const want = w / h
+  let best = ZHIPU_SIZES[0]
+  let bestScore = Infinity
+  for (const [a, b] of ZHIPU_SIZES) {
+    const score = Math.abs(Math.log((a / b) / want)) * 10 + Math.abs(Math.log((a * b) / (w * h))) / 10
+    if (score < bestScore) { bestScore = score; best = [a, b] }
+  }
+  return `${best[0]}x${best[1]}`
 }
 
 export function createImageGen({ getConfig, log, local, fetchImpl, codexAuth }) {
@@ -118,7 +154,13 @@ export function createImageGen({ getConfig, log, local, fetchImpl, codexAuth }) 
     if (!c.enabled) throw new Error('生图还没开启')
     const full = [c.stylePrompt, prompt].filter(Boolean).join('，')
     const t = Date.now()
-    const buf = c.provider === 'codex' ? await viaCodex(c, full, { shape }) : c.provider === 'custom' ? await viaCustom(c, full) : await viaOpenAI(c, full)
+    const buf = c.provider === 'codex'
+      ? await viaCodex(c, full, { shape })
+      : c.provider === 'custom'
+        ? await viaCustom(c, full)
+        : c.provider === 'zhipu'
+          ? await viaZhipu(c, full)
+          : await viaOpenAI(c, full)
     if (!buf || !buf.length) throw new Error('生图接口没有返回图片')
     if (!String(mimeOf(buf)).startsWith('image/')) throw new Error('生图接口返回的不是图片')
     log.info(`画好了一张图（${Math.round(buf.length / 1024)}KB，${Math.round((Date.now() - t) / 1000)}s）：${prompt.slice(0, 40)}`)
@@ -146,6 +188,50 @@ export function createImageGen({ getConfig, log, local, fetchImpl, codexAuth }) 
     else if (item.url) buf = await fetchImage(item.url, { maxBytes: 20 * 1024 * 1024, allowLocal: false, timeoutMs: 120000 })
     else throw new Error('生图服务没有返回图片')
     return buf
+  }
+
+  /**
+   * 智谱 BigModel：POST /images/generations，body 只有 model/prompt/size。
+   * 返回 data[0].url（也有 b64_json），模型不存在时自动退到下一个。
+   */
+  async function viaZhipu (c, prompt) {
+    const key = String(c.apiKey || '').trim()
+    if (!key) throw new Error('还没填智谱的 API Key（在面板「生图」页填，或写进 local/zhipu.key）')
+    const size = zhipuSize(c.size)
+    const models = [...new Set([String(c.model || '').trim() || 'cogview-4', ...ZHIPU_FALLBACK])]
+    let lastError = null
+    for (const model of models) {
+      const r = await fetch(ZHIPU_API(), {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${key}` },
+        body: JSON.stringify({ model, prompt, size }),
+        signal: AbortSignal.timeout(180000),
+      })
+      const text = await r.text()
+      let j = null
+      try { j = JSON.parse(text) } catch { /* 下面按文本报错 */ }
+      if (!r.ok) {
+        const msg = j?.error?.message || j?.message || text.slice(0, 200)
+        const code = j?.error?.code || j?.code || ''
+        lastError = `智谱返回 ${r.status}${code ? '（' + code + '）' : ''}：${msg}`
+        // 模型不存在/下线：换下一个
+        if (/模型不存在|不存在该模型|not\s*found|model.*(invalid|unknown)|1211|1213/i.test(String(code) + ' ' + msg)) {
+          log.info(`智谱没有 ${model} 这个模型，换下一个试`)
+          continue
+        }
+        if (r.status === 401) throw new Error('智谱 API Key 不对或没权限（401）：检查 Key 有没有复制错、是不是这个项目的')
+        if (r.status === 429) throw new Error('智谱接口限流或额度用完了（429）：' + msg)
+        throw new Error(lastError)
+      }
+      const item = j?.data?.[0]
+      if (!item) { lastError = '智谱没返回图片：' + text.slice(0, 200); continue }
+      if (item.b64_json || item.base64) return Buffer.from(String(item.b64_json || item.base64).replace(/^data:[^,]+,/, ''), 'base64')
+      const url = typeof item === 'string' ? item : item.url
+      if (!url) { lastError = '智谱返回的格式不认识：' + JSON.stringify(item).slice(0, 200); continue }
+      log.info(`智谱出图：${model} · ${size}`)
+      return fetchImage(url, { maxBytes: 20 * 1024 * 1024, allowLocal: false, timeoutMs: 120000 })
+    }
+    throw new Error(lastError || '智谱没有可用的模型')
   }
 
   /** 自定义接口：GET 直接把参数拼在地址上，POST 放进 JSON / 表单。 */
@@ -179,6 +265,7 @@ export function createImageGen({ getConfig, log, local, fetchImpl, codexAuth }) 
     const c = getConfig().imageGen
     if (!c.enabled) return false
     if (c.provider === 'codex') return auth.status().loggedIn
+    if (c.provider === 'zhipu') return Boolean(String(c.apiKey || '').trim())
     return c.provider === 'custom' ? Boolean(c.custom && c.custom.url) : Boolean(c.baseUrl && c.model)
   }
 

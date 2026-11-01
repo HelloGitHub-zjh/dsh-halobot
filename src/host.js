@@ -13,7 +13,7 @@ import { readFileSync, existsSync, writeFileSync, unlinkSync, statSync, mkdirSyn
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
-import { loadConfig, saveConfig, publicConfig, mergeFromPanel } from './core/config.js'
+import { loadConfig, saveConfig, publicConfig, mergeFromPanel, enforceAutoExclusive } from './core/config.js'
 import { createLogger } from './core/logger.js'
 import { registerSecret, redact } from './core/redact.js'
 import { createOneBotClient } from './onebot/client.js'
@@ -54,7 +54,11 @@ export function apply(ctx) {
   const secrets = () => { for (const k of ['webuiPassword', 'httpToken', 'wsToken']) registerSecret(cfg.snowluma[k]); registerSecret(cfg.imageGen.apiKey); registerSecret(cfg.bridge.token) }
   const setConfig = (next) => {
     const before = cfg
-    cfg = saveConfig(next)
+    // 「主动搭话」和「目的引擎」互斥：这次谁被打开，就把另一个关掉（两条保存路径都会经过这里）
+    const merged = enforceAutoExclusive(next, before)
+    if (merged.disabled) log.info(`「主动搭话」和「目的引擎」只能开一个，已把${merged.disabled === 'purpose' ? '目的引擎' : '主动搭话'}关掉`)
+    cfg = saveConfig(merged.config)
+    return merged.disabled
     // 改机器人号后旧连接的核对结果立刻失效，必须重新核对才能处理消息或完成向导。
     if (before.botQQ !== cfg.botQQ) {
       wrongAccount = ''
@@ -505,7 +509,7 @@ export function apply(ctx) {
     // 控制台密码不能只改配置（SnowLuma 那边还是旧的）：拿出来单独去 SnowLuma 改
     const newPw = typeof body?.snowluma?.webuiPassword === 'string' ? body.snowluma.webuiPassword : ''
     if (body?.snowluma) delete body.snowluma.webuiPassword
-    setConfig(mergeFromPanel(cfg, body))
+    const exclusive = setConfig(mergeFromPanel(cfg, body))
     let pw = null
     if (newPw && newPw !== before.snowluma.webuiPassword) pw = await snowluma.setPassword(newPw)
     const changedConn = before.gateway !== cfg.gateway || ['httpUrl', 'wsUrl', 'httpToken', 'wsToken', 'dir'].some((k) => before.snowluma[k] !== cfg.snowluma[k])
@@ -518,8 +522,9 @@ export function apply(ctx) {
     if (before.enabled && !cfg.enabled) onebot.stop()
     log.info(`设置已保存｜总开关 ${cfg.enabled ? '开' : '关'}｜试运行 ${cfg.dryRun ? '开' : '关'}`)
     await mods.sync().catch(() => {})
-    if (pw && !pw.ok) return { ...(await overview()), ok: false, message: '其他设置保存了，但控制台密码没改：' + pw.message }
-    return { ...(await overview()), message: '保存好了' + (pw ? '，' + pw.message : '') }
+    const exclNote = exclusive === 'purpose' ? '；「主动搭话」和「目的引擎」只能开一个，已把「目的引擎」关掉' : ''
+    if (pw && !pw.ok) return { ...(await overview()), ok: false, exclusive, message: '其他设置保存了，但控制台密码没改：' + pw.message + exclNote }
+    return { ...(await overview()), exclusive, message: '保存好了' + (pw ? '，' + pw.message : '') + exclNote }
   })
 
   // ---------- 备份迁移：把数据目录里的东西打包带走 / 导回来 ----------
@@ -569,9 +574,9 @@ export function apply(ctx) {
     for (const k of ['awakeFrom', 'awakeTo', 'maxPerDay']) if (Number.isFinite(b[k])) spPatch[k] = Math.max(0, Math.floor(b[k]))
     if (Object.keys(spPatch).length) patch.speakUp = spPatch
     if (!Object.keys(patch).length) return { ok: false, message: '没有可保存的字段' }
-    setConfig(mergeFromPanel(cfg, patch))
+    const exclusive = setConfig(mergeFromPanel(cfg, patch))
     log.info(`面板已保存目的引擎设置｜${Object.keys(extPatch).map((k) => k + '=' + extPatch[k]).concat(Object.keys(spPatch).map((k) => k + '=' + spPatch[k])).join(' ')}`)
-    return { ok: true, purpose: purposeOverview() }
+    return { ok: true, purpose: purposeOverview(), exclusive }
   })
   // ---------- 统计 / 会话管理 ----------
   /** 面板「统计」和「会话管理」共用的一份：逐日计数 + 每条会话的今天收发和累计 token。 */

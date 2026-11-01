@@ -501,6 +501,14 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       return {
         sw: (path, extra) => h(Switch, { on: !!getPath(draft, path), onChange: (v) => setDraft(setPath(draft, path, v)), ...(extra || {}) }),
         text: (path, props) => h('input', { className: cx('ab-input', props && props.size), value: getPath(draft, path) ?? '', placeholder: props && props.placeholder, type: (props && props.type) || 'text', onChange: (e) => setDraft(setPath(draft, path, e.target.value)) }),
+        area: (path, props) => h('textarea', {
+          className: 'ab-input',
+          rows: (props && props.rows) || 4,
+          style: { width: '100%', resize: 'vertical', fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fontSize: 12, lineHeight: 1.5 },
+          value: getPath(draft, path) ?? '',
+          placeholder: props && props.placeholder,
+          onChange: (e) => setDraft(setPath(draft, path, e.target.value)),
+        }),
         num: (path, props) => h('input', { className: 'ab-input sm', type: 'number', min: props && props.min, max: props && props.max, step: (props && props.step) || 1, value: getPath(draft, path) ?? '', onChange: (e) => setDraft(setPath(draft, path, e.target.value === '' ? '' : Number(e.target.value))) }),
         percent: (path) => h(Range, { min: 0, max: 100, value: pct(getPath(draft, path)), onChange: (v) => setDraft(setPath(draft, path, v / 100)), fmt: (v) => v + '%' }),
         range: (path, min, max, step, fmt) => h(Range, { min, max, step, value: getPath(draft, path), onChange: (v) => setDraft(setPath(draft, path, v)), fmt }),
@@ -1807,7 +1815,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     function SpeakUp({ st, draft, setDraft, toast }) {
       const f = useField(draft, setDraft)
       return h('div', { className: 'ab-grid' },
-        h(Card, { title: '主动搭话', right: f.sw('speakUp.enabled'), desc: '只在和你的私聊里：你一阵子没理她，她会主动来找你说一句——每次由头不一样（分享小事、接着上次的话题、想起你的事、按时间问候……），内容是她现想的，不是模板。群里不会这样。' },
+        h(Card, { title: '主动搭话', right: f.sw('speakUp.enabled'), desc: '只在和你的私聊里：你一阵子没理她，她会主动来找你说一句——每次由头不一样（分享小事、接着上次的话题、想起你的事、按时间问候……），内容是她现想的，不是模板。群里不会这样。它和下面的「目的引擎」互斥：保存时开着这个，就会把目的引擎关掉。' },
           h(Row, { label: '追问', hint: '她问了你一句、你 15~40 分钟没回，偶尔轻轻追一句（「人呢」之类），每句最多追一次' }, f.sw('speakUp.nudge')),
           h(Row, { label: '多久没聊才找你' }, f.num('speakUp.idleMinutes', { min: 5 }), h('span', { className: 'ab-muted' }, '分钟')),
           h(Row, { label: '两次之间隔', hint: '在这个范围里随机' }, f.num('speakUp.minIntervalMinutes', { min: 5 }), h('span', { className: 'ab-muted' }, '到'), f.num('speakUp.maxIntervalMinutes', { min: 5 }), h('span', { className: 'ab-muted' }, '分钟')),
@@ -1850,13 +1858,21 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         ['素材', s.materialCount], ['观察', s.observationCount], ['目标假设', s.goalCount], ['候选', s.candidateCount], ['今日', (s.countToday ?? p.count) + '/' + (s.dailyMax ?? p.dailyMax ?? '?')],
       ]
       const save = (patch) => async () => {
+        const turningOn = patch.enabled === true
         setBusy(patch.__k || 'save'); delete patch.__k
-        try { const r = await post('/panel/purpose/config', patch); if (!r.ok) toast(r.message || '没成功', 'err'); else { setD(r); toast('保存好了', 'ok') } }
-        catch (e) { toast(e.message) } finally { setBusy('') }
+        try {
+          const r = await post('/panel/purpose/config', patch)
+          if (!r.ok) toast(r.message || '没成功', 'err')
+          else {
+            setD(r)
+            if (turningOn && r.exclusive === 'speakUp') toast('保存好了，已把「主动搭话」关掉', 'ok')
+            else toast('保存好了', 'ok')
+          }
+        } catch (e) { toast(e.message) } finally { setBusy('') }
       }
-      return h(Card, { title: '目的引擎（实验）', desc: '可选的新引擎，默认关：她会自己从聊天和记忆里找「想跟你说的事」——攒素材 → 记观察 → 立目标假设 → 挑一个候选，到点了才来找你。开着的话建议关掉上方「主动搭话」总开关，两套别同时开。' },
+      return h(Card, { title: '目的引擎（实验）', desc: '可选的新引擎，默认关：她会自己从聊天和记忆里找「想跟你说的事」——攒素材 → 记观察 → 立目标假设 → 挑一个候选，到点了才来找你。它和上方「主动搭话」互斥：开了这个，保存时会自动把「主动搭话」的总开关关掉，同一时间只会有一套在跑。' },
         !p.available ? h('div', { className: 'ab-note' }, '目的引擎模块没在跑。到面板「扩展」页看看模块状态。') : null,
-        h(Row, { label: '启用目的引擎', hint: '默认关。这是「主动搭话」的替代引擎，两套同时开会重复打扰' },
+        h(Row, { label: '启用目的引擎', hint: '默认关。这是「主动搭话」的替代引擎；两个都开时会自动关掉「主动搭话」，不会重复打扰' },
           h(Switch, { on: p.enabled, disabled: !p.available, onChange: save({ enabled: !p.enabled, __k: 'enabled' }) })),
         p.enabled ? h('div', { className: 'ab-flex', style: { gap: 8, flexWrap: 'wrap', margin: '4px 0 10px' } },
           chain.map(([l, n]) => h('div', { key: l, className: 'ab-card', style: { flex: '1 1 90px', padding: '8px 10px' } },
@@ -3054,76 +3070,48 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       )
     }
 
-    function CodexSub({ draft, setDraft, toast }) {
-      const f = useField(draft, setDraft)
-      const [status, setStatus] = useState(null)
-      const [waiting, setWaiting] = useState(null)
-      const [input, setInput] = useState('')
-      const [busy, setBusy] = useState(false)
-      const refresh = () => get('/image/codex/status').then(setStatus).catch(() => setStatus({ loggedIn: false }))
-      useEffect(() => { refresh() }, [])
-      useEffect(() => {
-        if (!waiting) return undefined
-        let active = true
-        const timer = setInterval(async () => {
-          const r = await get('/image/codex/login/status').catch(() => null)
-          if (!active || !r) return
-          if (r.state === 'done' || r.state === 'error') {
-            clearInterval(timer); setWaiting(null); setInput(''); refresh()
-            toast(r.state === 'done' ? '登录成功' : r.error || '登录失败')
-          }
-        }, 2000)
-        return () => { active = false; clearInterval(timer) }
-      }, [Boolean(waiting)])
-      const act = (path, body = {}) => async () => {
-        setBusy(true)
-        const r = await post(path, body).catch(() => ({ ok: false, message: '请求失败' }))
-        setBusy(false)
-        if (!r.ok) { toast(r.message || '操作失败'); return }
-        setInput('')
-        if (path.endsWith('/login')) setWaiting({ url: r.url, needPaste: r.needPaste })
-        else { setWaiting(null); refresh(); toast(path.endsWith('/logout') ? '已退出 ChatGPT' : path.endsWith('/cancel') ? '已取消登录' : '登录成功') }
-      }
-      return h('div', null,
-        h('div', { className: 'ab-note', style: { margin: '8px 0' } }, '实验性订阅接法：使用非公开图片端点，可用性和额度由账号、工作区及服务端决定。登录信息仅存本机。'),
-        h(Row, { label: 'ChatGPT 账号' },
-          h('span', { className: 'ab-small' }, status === null ? '读取登录状态…' : status.loggedIn ? '已登录：' + (status.email || status.accountId) : '尚未登录'),
-          h(Btn, { small: true, onClick: act('/image/codex/login'), disabled: busy || Boolean(waiting) }, '登录 ChatGPT'),
-          status?.loggedIn ? h(Btn, { small: true, onClick: act('/image/codex/logout'), disabled: busy }, '退出') : null),
-        waiting ? h('div', { className: 'ab-note' },
-          h('div', null, waiting.needPaste ? '端口 1455 被占用：打开授权链接登录，再粘贴完整回调地址。' : '请在浏览器完成登录。回调成功后自动刷新，也可以手动粘贴完整回调地址。'),
-          h('a', { href: waiting.url, target: '_blank', rel: 'noreferrer', style: { display: 'block', wordBreak: 'break-all' } }, '打开 ChatGPT 授权页'),
-          h('input', { className: 'ab-input', value: input, type: 'password', autoComplete: 'off', placeholder: '粘贴完整回调地址', onChange: (e) => setInput(e.target.value) }),
-          h(Btn, { small: true, onClick: act('/image/codex/complete', { input }), disabled: busy || !input.trim() }, '完成登录'),
-          h(Btn, { small: true, onClick: act('/image/codex/cancel'), disabled: busy }, '取消登录')) : null,
-        h(Row, { label: '模型', hint: '可用模型由服务端决定' }, f.select('imageGen.codex.model', [
-          { value: 'gpt-image-2', label: 'gpt-image-2' }, { value: 'gpt-image-2.5-flare', label: 'gpt-image-2.5-flare' }, { value: 'gpt-image-2.5-sunburst', label: 'gpt-image-2.5-sunburst' },
-        ], { width: 260 })),
-        h(Row, { label: '质量', hint: '所选模型需支持该选项' }, f.select('imageGen.codex.quality', ['auto', 'low', 'medium', 'high', 'xhigh', 'max'].map((value) => ({ value, label: value })), { width: 180 })),
-        h(Row, { label: '背景' }, f.select('imageGen.codex.background', ['auto', 'opaque', 'transparent'].map((value) => ({ value, label: value })), { width: 180 })),
-        h('div', { className: 'ab-muted ab-small' }, '订阅接法通过构图提示引导，实际尺寸由服务端选择。'),
-      )
-    }
-
     function ImageGen({ draft, setDraft, toast }) {
       const f = useField(draft, setDraft)
       const c = draft.imageGen
       const custom = c.custom || {}
       const isCustom = c.provider === 'custom'
-      const isCodex = c.provider === 'codex'
+      const isZhipu = c.provider === 'zhipu'
+      const [trying, setTrying] = useState(false)
+      const [shot, setShot] = useState(null)
+      const tryDraw = async () => {
+        setTrying(true)
+        setShot(null)
+        try { setShot(await post('/image/test', {})) } catch (e) { setShot({ ok: false, message: e.message || '试画失败' }) } finally { setTrying(false) }
+      }
+      // 智谱的模型和尺寸：面板里选，特殊值也留着不丢
+      const zpPresets = [
+        { value: 'cogview-4', label: 'cogview-4', desc: '0.06 元/张，通用' },
+        { value: 'glm-image', label: 'glm-image', desc: '0.1 元/张，擅长文字、海报' },
+        { value: 'cogview-3-flash', label: 'cogview-3-flash', desc: '便宜、快' },
+      ]
+      const zpModels = c.model && !zpPresets.some((m) => m.value === c.model) ? zpPresets.concat([{ value: c.model, label: c.model, desc: '自定义模型' }]) : zpPresets
+      const zpSizeOpts = [
+        { value: '1024x1024', label: '1024 × 1024', desc: '方图' },
+        { value: '768x1344', label: '768 × 1344', desc: '竖图 9:16' },
+        { value: '864x1152', label: '864 × 1152', desc: '竖图 3:4' },
+        { value: '1344x768', label: '1344 × 768', desc: '横图 16:9' },
+        { value: '1152x864', label: '1152 × 864', desc: '横图 4:3' },
+        { value: '1440x720', label: '1440 × 720', desc: '宽幅 2:1' },
+        { value: '720x1440', label: '720 × 1440', desc: '长图 1:2' },
+      ]
       const isPost = custom.method === 'POST'
       const params = Array.isArray(custom.params) ? custom.params : []
       const setParams = (next) => setDraft(setPath(draft, 'imageGen.custom.params', next))
       const setP = (i, k, v) => setParams(params.map((p, j) => (j === i ? { ...p, [k]: v } : p)))
       return h('div', { className: 'ab-grid' },
-        h(Card, { title: '让她画图', right: f.sw('imageGen.enabled'), desc: '接上生图服务后，让她「画一张……」就会画好发出来。可选 OpenAI 兼容接口、自定义接口，或登录 ChatGPT 使用实验性 Codex 订阅接法。本机 SD WebUI / ComfyUI 可在「本地接口」页接「生图」。' },
-          h(Row, { label: '接口格式', hint: '第二个适合 pollinations 这类「GET 一个地址就出图」的服务' },
+        h(Card, { title: '让她画图', right: f.sw('imageGen.enabled'), desc: '接上生图服务后，让她「画一张……」就会画好发出来。智谱 BigModel 填 Key 就能画；想接别的服务就用自定义接口。本机 SD WebUI / ComfyUI 可以在「本地接口」页接「生图」。' },
+          h(Row, { label: '接口格式', hint: '智谱填 Key 就能画；自定义适合别的服务，或 pollinations 这类「GET 一个地址就出图」的接口' },
             h(Seg, {
-              value: isCodex ? 'codex' : isCustom ? 'custom' : 'openai',
+              value: isCustom ? 'custom' : 'zhipu',
               onChange: (v) => setDraft(setPath(draft, 'imageGen.provider', v)),
-              options: [{ value: 'openai', label: 'OpenAI 格式' }, { value: 'custom', label: '自定义接口' }, { value: 'codex', label: 'Codex 订阅（实验性）' }],
+              options: [{ value: 'zhipu', label: '智谱 BigModel' }, { value: 'custom', label: '自定义接口' }],
             })),
-          isCodex ? h(CodexSub, { draft, setDraft, toast }) : isCustom ? h('div', null,
+          isCustom ? h('div', null,
             h(Row, { label: '请求方式', hint: 'GET 把参数都拼在地址上；POST 放进请求体' },
               h(Seg, {
                 value: isPost ? 'POST' : 'GET',
@@ -3135,8 +3123,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             h(Row, { label: 'API Key', hint: '会以 Authorization: Bearer 发出；不需要就留空' },
               f.text('imageGen.apiKey', { type: 'password', placeholder: c.apiKeySet ? '已保存（不改就留空）' : '没有就留空' })),
             h('div', { className: 'ab-label', style: { marginTop: 12 } },
-              h('b', null, isPost ? '请求体参数' : 'URL 参数'),
-              h('small', null, '参数名和值都自己填；值里可以用 {prompt}')),
+              h('b', null, isPost ? '参数（备用）' : 'URL 参数'),
+              h('small', null, isPost ? '只有上面的「请求体」留空时，才用这里的参数拼成请求体' : '参数名和值都自己填；值里可以用 {prompt}')),
             params.length
               ? params.map((p, i) => h('div', { key: i, className: 'ab-flex', style: { gap: 6, marginBottom: 6 } },
                 h('input', { className: 'ab-input', style: { width: 170 }, value: p.key || '', placeholder: '参数名，如 model', onChange: (e) => setP(i, 'key', e.target.value) }),
@@ -3145,6 +3133,10 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               : h('div', { className: 'ab-muted ab-small', style: { marginBottom: 6 } }, '还没有参数 —— 比如 model=flux-anime、width=1080、height=1920、nologo=true'),
             h('div', { className: 'ab-flex', style: { marginBottom: 10 } },
               h(Btn, { small: true, onClick: () => setParams([...params, { key: '', value: '' }]) }, '＋ 加一个参数')),
+            isPost ? h('div', { style: { marginTop: 6 } },
+              h('div', { className: 'ab-label' }, h('b', null, '请求体（可选）'), h('small', null, '填了就用这段原文当 body，上面的参数表只在 GET 时拼 URL；可以用 {prompt} {model} {size} {width} {height}')),
+              h('div', { style: { margin: '6px 0 4px' } },
+                f.area('imageGen.custom.body', { rows: 5, placeholder: '例如：{"model":"{model}","prompt":"{prompt}","size":"{size}"}' }))) : null,
             isPost ? h(Row, { label: '请求体格式' },
               h(Seg, {
                 value: custom.bodyType === 'form' ? 'form' : 'json',
@@ -3153,20 +3145,30 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               })) : null,
             h(Row, { label: '取值路径', hint: '接口直接回图片就留空；回 JSON 时填地址字段' },
               f.text('imageGen.custom.responsePath', { size: 'wide', placeholder: '如 data.0.url（留空自动找）' })),
-          ) : h('div', null,
-            h(Row, { label: '服务地址', hint: '一般以 /v1 结尾' }, f.text('imageGen.baseUrl', { size: 'wide', placeholder: 'https://api.siliconflow.cn/v1' })),
-            h(Row, { label: 'API Key', hint: '只存在本机，不会显示出来' }, f.text('imageGen.apiKey', { type: 'password', placeholder: c.apiKeySet ? '已保存（不改就留空）' : '没有就留空' })),
-            h(Row, { label: '模型' }, f.text('imageGen.model', { size: 'wide', placeholder: '例如 Kwai-Kolors/Kolors' })),
-          ),
-          h(Row, { label: '默认构图', hint: isCodex ? '通过构图提示引导，实际尺寸由服务端选择，不保证严格比例' : '聊天工具可指定本次构图。服务不支持所选尺寸时会报告失败，请换一种构图；自定义接口需使用尺寸占位符' },
+          ) : isZhipu ? h('div', null,
+            h(Row, { label: 'API Key', hint: '在 bigmodel.cn → API Key 里拿，只存在本机' },
+              f.text('imageGen.apiKey', { type: 'password', placeholder: c.apiKeySet ? '已保存（不改就留空）' : '填智谱的 API Key' })),
+            h(Row, { label: '模型', hint: 'cogview-4 通用；glm-image 更会写字、做海报；cogview-3-flash 最便宜' },
+              f.select('imageGen.model', zpModels, { width: 240 })),
+            h(Row, { label: '图片尺寸', hint: '智谱只认这几种；选了别的会按比例就近换' },
+              f.select('imageGen.size', zpSizeOpts, { width: 220 })),
+            h('div', { className: 'ab-note', style: { marginTop: 10 } },
+              '接口地址固定为 https://open.bigmodel.cn/api/paas/v4/images/generations，不用填。Key 申请：bigmodel.cn/usercenter/proj-mgmt/apikeys。如果「本地接口 → 生图」也开着，会优先用本地那个脚本。'),
+            h('div', { className: 'ab-flex', style: { gap: 10, marginTop: 10, alignItems: 'center' } },
+              h(Btn, { small: true, disabled: trying, onClick: tryDraw }, trying ? '正在画…' : '试画一张（花一次额度）'),
+              shot && !shot.ok ? h('span', { className: 'ab-small', style: { color: 'var(--ab-err)' } }, shot.message)
+                : shot && shot.ok ? h('span', { className: 'ab-small', style: { color: 'var(--ab-ok)' } }, '画好了 · ' + shot.kb + ' KB · ' + (shot.ms / 1000).toFixed(1) + ' 秒') : null),
+            shot && shot.dataUrl ? h('img', { src: shot.dataUrl, style: { maxWidth: 220, borderRadius: 10, marginTop: 8, border: '1px solid var(--ab-line)' } }) : null,
+          ) : null,
+          h(Row, { label: '默认构图', hint: isZhipu ? '聊天时她可以按需要选构图；智谱会按比例换成最接近的官方尺寸' : '聊天工具可指定本次构图。服务不支持所选尺寸时会报告失败，请换一种构图；自定义接口需使用尺寸占位符' },
             f.select('imageGen.shape', [
-              { value: 'her', label: '让她选择', desc: isCodex ? '未指定时由服务端选择' : '未指定时沿用图片尺寸' },
-              { value: 'square', label: isCodex ? '方图 1:1' : '方图 1:1（1024 × 1024）' },
-              { value: 'portrait', label: isCodex ? '竖图 2:3' : '竖图 2:3（1024 × 1536）' },
-              { value: 'landscape', label: isCodex ? '横图 3:2' : '横图 3:2（1536 × 1024）' },
-              { value: 'wide', label: isCodex ? '宽幅 16:9' : '宽幅 16:9（1536 × 864）' },
+              { value: 'her', label: '让她选择', desc: '未指定时沿用图片尺寸' },
+              { value: 'square', label: '方图 1:1（1024 × 1024）' },
+              { value: 'portrait', label: '竖图 2:3（1024 × 1536）' },
+              { value: 'landscape', label: '横图 3:2（1536 × 1024）' },
+              { value: 'wide', label: '宽幅 16:9（1536 × 864）' },
             ], { width: 260 })),
-          !isCodex && (!c.shape || c.shape === 'her') ? h(Row, { label: '图片尺寸', hint: isCustom ? '接口地址 / 参数里可以用 {size} 或 {width}/{height}' : '未指定构图时沿用这个尺寸' },
+          !isZhipu && (!c.shape || c.shape === 'her') ? h(Row, { label: '图片尺寸', hint: isCustom ? '接口地址 / 参数里可以用 {size} 或 {width}/{height}' : '未指定构图时沿用这个尺寸' },
             f.select('imageGen.size', [{ value: '1024x1024', label: '1024 × 1024', desc: '方图' }, { value: '768x1024', label: '768 × 1024', desc: '竖图' }, { value: '1024x768', label: '1024 × 768', desc: '横图' }, { value: '512x512', label: '512 × 512', desc: '小图，更快' }], { width: 200 })) : null,
           h(Row, { label: '固定风格', hint: '每次画都会加在描述前面' }, f.text('imageGen.stylePrompt', { size: 'wide', placeholder: '例如：日系二次元，柔和光线，蓝白配色' })),
           h(Row, { label: '只给主人画', hint: '关掉后群友也能让她画（会花你的额度）' }, f.sw('imageGen.ownerOnly')),
