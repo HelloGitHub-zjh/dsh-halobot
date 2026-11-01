@@ -41,7 +41,7 @@ QQ ⇄ SnowLuma（OneBot v11）⇄ Halobot 插件 ⇄ DSH 会话（自带 preset
 
 ```bash
 # 从 GitHub 装（推荐，认准 tag）
-dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.5.0
+dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.6.0
 
 # 或者 clone 下来本地装
 git clone git@github.com:HelloGitHub-zjh/dsh-halobot.git
@@ -72,6 +72,8 @@ dsh plugin --profile desktop add file:/绝对路径/dsh-halobot
 | 表达 | 语音、表情包、生图、翻唱 |
 | 平台 | 空间日记、B站、抖音、小黑盒 |
 | 系统 | 连接（含一键自检）、模型（含分时段单价）、权限、本地接口、扩展、备份迁移（含自动备份）、日志（搜索 / 下载） |
+
+会一直变长的列表（刷过什么、记忆、日记、日志文件、会话、按会话、心情历史）都做成了分页表格，一页 10 条；长文字默认截断，鼠标移上去看全文。
 
 模块没启用的页签会自动隐藏。
 

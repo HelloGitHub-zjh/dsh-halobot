@@ -334,6 +334,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
 .ab-savebar{border-radius:14px;backdrop-filter:blur(8px)}
 .ab-table th{font-size:12px;letter-spacing:.02em}
 .ab-table tr:hover td{background:var(--ab-hover)}
+.ab-pager{display:flex;align-items:center;justify-content:flex-end;gap:8px;margin-top:10px}
+.ab-clip{display:inline-block;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .ab-checks{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px}
 .ab-check{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:12px;border:1px solid var(--ab-line);background:var(--ab-card-2);color:var(--ab-sub);font-size:12.5px}
 .ab-check i{font-style:normal;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;background:var(--ab-line-2);color:#fff;flex:none}
@@ -1738,6 +1740,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     function Diary({ st, draft, setDraft, toast }) {
       const f = useField(draft, setDraft)
       const [data, setData] = useState(null)
+      const pgd = usePager((data && data.items) || [])
       const on = modOn(st, 'diary')
       const load = () => (on ? get('/diary/history').then((r) => { setData(r); if (r.warning) toast(r.warning) }).catch((e) => toast('日记状态刷新失败：' + e.message)) : null)
       useEffect(() => { load() }, [on])
@@ -1758,10 +1761,18 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Btn, { small: true, kind: 'ghost', title: '刷新空间状态', onClick: load }, h('svg', { width: 16, height: 16, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, 'aria-hidden': true }, h('path', { d: 'M20 7v5h-5M4 17v-5h5M6.1 7a7 7 0 0 1 11.6-1L20 9M4 15l2.3 3A7 7 0 0 0 17.9 17' }))),
           h(Btn, { small: true, kind: 'primary', onClick: async () => { toast('她在写了…'); try { const r = await post('/diary/run', {}); toast(r.ok ? (r.dryRun ? '写好了（试运行，没真发）' : '发出去了') : r.message) } catch (e) { toast(e.message) } finally { await load() } } }, '现在写一篇')) },
           !data ? h(Empty, { icon: '⏳', text: '加载中…' }) : !data.items || data.items.length === 0 ? h(Empty, { icon: '📔', text: '还没写过日记。' }) :
-            h('div', { className: 'ab-list' }, data.items.map((d, i) => h('div', { key: i, className: 'ab-li' },
-              h('div', { className: 'meta' }, new Date(d.at).toLocaleString(), h('br'), d.deletedAt ? '已从空间删除' : d.dryRun ? '试运行' : d.ok ? (AUDIENCE_LABEL[d.visibility] || '已发布') : '失败'),
-              h('div', { className: 'body' }, d.text, d.error ? h('div', { className: 'ab-small', style: { color: 'var(--ab-err)' } }, d.error) : null),
-              d.tid && !d.deletedAt ? h(Btn, { small: true, kind: 'ghost', onClick: async () => { if (!confirm('从 QQ 空间删除这条说说？')) return; try { const r = await post('/qzone/delete', { tid: d.tid }); toast(r.message) } catch (e) { toast(e.message) } finally { await load() } } }, '从空间删除') : null))),
+            h('div', null,
+              h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'ab-table' },
+                  h('thead', null, h('tr', null, ['时间', '状态', '内容', ''].map((x) => h('th', { key: x }, x)))),
+                  h('tbody', null, pgd.rows.map((d, i) => h('tr', { key: i },
+                    h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, new Date(d.at).toLocaleString()),
+                    h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, d.deletedAt ? '已从空间删除' : d.dryRun ? '试运行' : d.ok ? (AUDIENCE_LABEL[d.visibility] || '已发布') : '失败'),
+                    h('td', null,
+                      h(Clip, { text: d.text, n: 42, max: 460 }),
+                      d.error ? h('div', { className: 'ab-small', style: { color: 'var(--ab-err)' } }, d.error) : null),
+                    h('td', null, d.tid && !d.deletedAt ? h(Btn, { small: true, kind: 'ghost', onClick: async () => { if (!confirm('从 QQ 空间删除这条说说？')) return; try { const r = await post('/qzone/delete', { tid: d.tid }); toast(r.message) } catch (e) { toast(e.message) } finally { await load() } } }, '从空间删除') : null)))))),
+              h(Pager, { page: pgd.page, total: pgd.total, setPage: pgd.setPage, count: pgd.count })),
         ),
         social,
       )
@@ -1893,6 +1904,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     /** 心情页：她此刻的心情、怎么衰减、被什么影响。 */
     function MoodPage({ st, draft, setDraft, toast }) {
       const f = useField(draft, setDraft)
+      const pgh = usePager(st.mood.history || [])
       const moodCard = !modOn(st, 'mood') ? h(ModOff, { name: '心情' }) : h(Card, { title: '心情', right: f.sw('mood.enabled'), desc: '被夸、被哄、被凶都会影响她的心情（对她说的话、主人的话影响更大），过一阵子慢慢回到平常。心情好时她话多、更爱发表情和语音、回得快、群里更爱插话；心情差时话少、回得慢、少发表情，还会带点小脾气。' },
           h('div', { className: 'ab-flex', style: { marginBottom: 8 } }, h('b', null, st.mood.label), h('span', { className: 'ab-muted' }, st.mood.value + ' / 100'), st.mood.reason ? h('span', { className: 'ab-muted ab-small' }, '· 因为' + st.mood.reason) : null),
           h('div', { className: 'ab-mood' }, h('i', { style: { width: Math.max(4, st.mood.value) + '%' } })),
@@ -1921,9 +1933,15 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               h(Row, { label: '判定概率', hint: '不是每轮都问模型，只有抽中的轮次才花这一次' }, f.percent('mood.judgeChance')),
               h(Row, { label: '最短间隔', hint: '两次模型判定至少隔多久' }, h('div', { className: 'ab-row' }, f.num('mood.judgeCooldownSec', { min: 0, max: 900, step: 10 }), h('span', { className: 'ab-muted ab-small' }, ' 秒'))),
               h(Row, { label: '变化阈值', hint: '模型给的变化小于这个数就不算，免得心情抖来抖去' }, f.num('mood.judgeMinDelta', { min: 1, max: 15 }))) : null),
-          (st.mood.history || []).length ? h('div', { className: 'ab-list', style: { marginTop: 8 } }, st.mood.history.slice(0, 6).map((x, i) => h('div', { key: i, className: 'ab-li' },
-            h('div', { className: 'meta' }, timeAgo(x.at)),
-            h('div', { className: 'body' }, (x.to >= x.from ? '↑ ' : '↓ ') + x.from + ' → ' + x.to, h('span', { className: 'ab-muted ab-small' }, '  ' + x.reason))))) : null,
+          (st.mood.history || []).length ? h('div', null,
+            h('div', { style: { marginTop: 10, overflowX: 'auto' } },
+              h('table', { className: 'ab-table' },
+                h('thead', null, h('tr', null, ['时间', '变化', '因为'].map((x) => h('th', { key: x }, x)))),
+                h('tbody', null, pgh.rows.map((x, i) => h('tr', { key: i },
+                  h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(x.at)),
+                  h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, (x.to >= x.from ? '↑ ' : '↓ ') + x.from + ' → ' + x.to),
+                  h('td', null, h(Clip, { text: x.reason, n: 60, max: 460 }))))))),
+            h(Pager, { page: pgh.page, total: pgh.total, setPage: pgh.setPage, count: pgh.count })) : null,
         )
       return h('div', { className: 'ab-grid' }, moodCard)
     }
@@ -1946,6 +1964,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const memOn = modOn(st, 'memory')
       useEffect(() => { if (memOn) { load(''); loadIns() } }, [memOn])
       useEffect(() => { if (!memOn) return; const t = setTimeout(() => load(q), 250); return () => clearTimeout(t) }, [q])
+      const pgi = usePager(ins || [])
+      const pgm = usePager(mem || [])
       const last = st.memory && st.memory.lastConsolidate
       if (!memOn) return h('div', { className: 'ab-grid' }, h(ModOff, { name: '记忆' }))
       return h('div', { className: 'ab-grid' },
@@ -1953,7 +1973,12 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         h(ProfilesCard, { toast }),
         h(Card, { title: '相处经验', desc: '她对每个人（和每个群）总结出来的相处之道：概括的、不琐碎的，比如「他累的时候不想多聊」。每次整理记忆时她会回顾一次，越来越懂你。聊天时只带上对当前这个人的那份。' },
           ins === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : ins.length === 0 ? h(Empty, { icon: '🌱', text: '还没有总结出经验。多聊几天，整理记忆时她会慢慢总结。' }) :
-            ins.map((p) => h(InsightCard, { key: p.key, p, toast, onSaved: loadIns, style: styles[p.key] || [] }))),
+            h('div', null,
+              h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'ab-table' },
+                  h('thead', null, h('tr', null, ['谁', '条数', '相处经验', ''].map((x) => h('th', { key: x }, x)))),
+                  h('tbody', null, pgi.rows.map((p) => h(InsightCard, { key: p.key, p, toast, onSaved: loadIns, style: styles[p.key] || [] }))))),
+              h(Pager, { page: pgi.page, total: pgi.total, setPage: pgi.setPage, count: pgi.count }))),
         h(Card, { title: '说话方式', desc: '聊久了潜移默化学到的：每个人的说话习惯（她会自然地贴近一点），和她自己慢慢养成的说法。不会变成另一个人，只是越来越像「你们的」哈洛。' },
           h(StyleEditor, { k: 'self', label: '她自己养成的说法', list: styles.self || [], toast, onSaved: loadIns }),
           Object.keys(styles).filter((k) => k !== 'self').length === 0 ? h('div', { className: 'ab-muted ab-small' }, '还没学到别人的说话习惯。整理记忆时会跟着相处经验一起总结（显示在上面每个人的相处经验下面）。') : null),
@@ -1980,7 +2005,12 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('div', { className: 'ab-section-title' }, '翻一翻'),
           h('input', { className: 'ab-input wide', placeholder: '搜索记忆，例如：白米饭、游戏、约定…', value: q, onChange: (e) => setQ(e.target.value) }),
           mem === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : mem.length === 0 ? h(Empty, { icon: '🫧', text: q ? '没找到相关的记忆' : '还没有记住什么。' }) :
-            h('div', { className: 'ab-list', style: { marginTop: 8 } }, mem.map((m) => h(MemoryRow, { key: m.id, m, onChanged: () => load(), toast })))),
+            h('div', { style: { marginTop: 8 } },
+              h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'ab-table' },
+                  h('thead', null, h('tr', null, ['时间', '来源', '内容', ''].map((x) => h('th', { key: x }, x)))),
+                  h('tbody', null, pgm.rows.map((m) => h(MemoryRow, { key: m.id, m, onChanged: () => load(), toast }))))),
+              h(Pager, { page: pgm.page, total: pgm.total, setPage: pgm.setPage, count: pgm.count }))),
         h(RecallLog, null),
         h(MemoryImport, { toast, onDone: () => load() }),
       )
@@ -2043,21 +2073,37 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const [list, setList] = useState(null)
       const load = () => get('/profiles').then((r) => setList(r.list || []))
       useEffect(() => { load() }, [])
+      const pgp = usePager(list || [])
       return h(Card, { title: '人物小档案', desc: '她对每个人的印象：是谁、什么关系、喜好、最近在忙什么。和谁聊天就带上谁的那份（群里带上正在说话的几个人），不用等对方提到关键词她才想起来。每次整理记忆时，记忆有变化的人会按新记忆重写；你也可以直接改。' },
         list === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : list.length === 0 ? h(Empty, { icon: '🌱', text: '还没有。关于一个人记住 3 条以上的事后，整理记忆时会写出来。' }) :
-          h('div', { className: 'ab-list' }, list.map((p) => h(ProfileRow, { key: p.qq, p, toast, onChanged: load }))))
+          h('div', null,
+            h('div', { style: { overflowX: 'auto' } },
+              h('table', { className: 'ab-table' },
+                h('thead', null, h('tr', null, ['人', '小档案', '更新于', ''].map((x) => h('th', { key: x }, x)))),
+                h('tbody', null, pgp.rows.map((p) => h(ProfileRow, { key: p.qq, p, toast, onChanged: load }))))),
+            h(Pager, { page: pgp.page, total: pgp.total, setPage: pgp.setPage, count: pgp.count })))
     }
 
     function ProfileRow({ p, toast, onChanged }) {
+      const [edit, setEdit] = useState(false)
       const [text, setText] = useState(p.text)
       const [busy, setBusy] = useState(false)
       useEffect(() => { setText(p.text) }, [p.text])
-      return h('div', { className: 'ab-li', style: { alignItems: 'flex-start' } },
-        h('div', { className: 'meta' }, h('b', null, p.name || p.qq), h('br'), h('span', { className: 'ab-small' }, p.qq), h('br'), h('span', { className: 'ab-small' }, timeAgo(p.at))),
-        h('textarea', { className: 'ab-input wide', rows: 3, value: text, onChange: (e) => setText(e.target.value), style: { flex: 1 } }),
-        h('div', { style: { display: 'flex', flexDirection: 'column', gap: 4 } },
-          h(Btn, { small: true, kind: 'primary', disabled: text === p.text, onClick: async () => { const r = await post('/profiles/save', { qq: p.qq, text }); toast(r.message, 'ok'); onChanged() } }, '保存'),
-          h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: async () => { setBusy(true); const r = await post('/profiles/rebuild', { qq: p.qq }); setBusy(false); toast(r.message, r.ok ? 'ok' : 'err'); onChanged() } }, busy ? '重写中…' : '按记忆重写')))
+      return h('tr', null,
+        h('td', { style: { whiteSpace: 'nowrap' } },
+          h('b', null, p.name || p.qq),
+          h('div', { className: 'ab-small ab-muted' }, p.qq)),
+        h('td', null, edit
+          ? h('textarea', { className: 'ab-input', rows: 3, style: { width: '100%', fontFamily: 'inherit' }, value: text, onChange: (e) => setText(e.target.value) })
+          : h(Clip, { text: p.text, n: 60, max: 520 })),
+        h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(p.at)),
+        h('td', { style: { whiteSpace: 'nowrap' } }, edit
+          ? h('span', { className: 'ab-flex', style: { gap: 4 } },
+            h(Btn, { small: true, kind: 'primary', disabled: text === p.text, onClick: async () => { const r = await post('/profiles/save', { qq: p.qq, text }); toast(r.message, 'ok'); setEdit(false); onChanged() } }, '保存'),
+            h(Btn, { small: true, kind: 'ghost', onClick: () => { setEdit(false); setText(p.text) } }, '取消'))
+          : h('span', { className: 'ab-flex', style: { gap: 4 } },
+            h(Btn, { small: true, kind: 'ghost', onClick: () => setEdit(true) }, '改'),
+            h(Btn, { small: true, kind: 'ghost', disabled: busy, onClick: async () => { setBusy(true); const r = await post('/profiles/rebuild', { qq: p.qq }); setBusy(false); toast(r.message, r.ok ? 'ok' : 'err'); onChanged() } }, busy ? '重写中…' : '按记忆重写'))))
     }
 
     /** 最近几轮她想起了什么、因为哪些词想起来的。 */
@@ -2065,13 +2111,21 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const [list, setList] = useState(null)
       const load = () => get('/memory/recalls').then((r) => setList(r.list || []))
       useEffect(() => { load() }, [])
+      const pgr = usePager(list || [])
       return h(Card, { title: '最近想起了什么', desc: '每次回复前她会按对方说的话翻记忆。这里能看到最近几次想起了哪几条、是因为哪几个词想起来的；想不起来的那次也会列出来。', right: h(Btn, { small: true, kind: 'ghost', onClick: load }, '刷新') },
         !list ? h(Empty, { icon: '⏳', text: '加载中…' }) : list.length === 0 ? h(Empty, { icon: '🫧', text: '还没有记录（重启后从头记）。' }) :
-          h('div', { className: 'ab-list' }, list.slice(0, 10).map((r, i) => h('div', { key: i, className: 'ab-li' },
-            h('div', { className: 'meta' }, timeAgo(r.at), h('br'), h('span', { className: 'ab-small' }, String(r.where || '').replace(/^private:/, '私聊 ').replace(/^group:/, '群 '))),
-            h('div', { className: 'body' },
-              h('div', { className: 'ab-muted ab-small' }, '「' + r.query.slice(0, 60) + (r.query.length > 60 ? '…' : '') + '」'),
-              r.hits.length ? r.hits.map((x) => h('div', { key: x.id, style: { marginTop: 3 } }, '· ' + x.text, h('span', { className: 'ab-muted ab-small' }, '  ← ' + (x.why.join('、') || '—') + ' · ' + x.score))) : h('div', { className: 'ab-muted', style: { marginTop: 3 } }, '这次什么都没想起来'))))))
+          h('div', null,
+            h('div', { style: { overflowX: 'auto' } },
+              h('table', { className: 'ab-table' },
+                h('thead', null, h('tr', null, ['时间', '会话', '对方说', '想起了什么'].map((x) => h('th', { key: x }, x)))),
+                h('tbody', null, pgr.rows.map((r, i) => h('tr', { key: i },
+                  h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(r.at)),
+                  h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, String(r.where || '').replace(/^private:/, '私聊 ').replace(/^group:/, '群 ')),
+                  h('td', null, h(Clip, { text: r.query, n: 32, max: 260 })),
+                  h('td', null, r.hits && r.hits.length
+                    ? h(Clip, { text: r.hits.map((x) => x.text).join('；'), n: 46, max: 520 })
+                    : h('span', { className: 'ab-muted' }, '这次什么都没想起来'))))))),
+            h(Pager, { page: pgr.page, total: pgr.total, setPage: pgr.setPage, count: pgr.count })))
     }
 
     /** 导入旧档案：粘贴或上传文字，模型挑出值得记的，勾选后存进记忆库。 */
@@ -2126,32 +2180,56 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     }
 
     function InsightCard({ p, toast, onSaved, style }) {
+      const [edit, setEdit] = useState(false)
+      const [open, setOpen] = useState(false)
       const [text, setText] = useState(p.list.map((x) => x.text).join('\n'))
       const changed = text !== p.list.map((x) => x.text).join('\n')
       const who = p.key.startsWith('group:') ? '群 ' + p.key.slice(6) : (p.name ? p.name + '（' + p.key.slice(3) + '）' : p.key.slice(3))
-      return h('div', { style: { marginBottom: 12 } },
-        h('div', { className: 'ab-flex', style: { marginBottom: 6 } }, h('b', null, who), h('span', { className: 'ab-muted ab-small' }, p.list.length + ' 条'), h('div', { className: 'ab-spacer' }),
-          changed ? h(Btn, { small: true, kind: 'primary', onClick: async () => { const r = await post('/insights/save', { key: p.key, list: text.split('\n') }); toast(r.message, 'ok'); onSaved() } }, '保存') : null),
-        h('textarea', { className: 'ab-textarea', style: { minHeight: 70, fontFamily: 'inherit' }, value: text, onChange: (e) => setText(e.target.value), placeholder: '一行一条经验' }),
-        h(StyleEditor, { k: p.key, label: '说话方式', list: style || [], toast, onSaved }))
+      const joined = p.list.map((x) => x.text).join('；')
+      return h('tr', null,
+        h('td', { style: { whiteSpace: 'nowrap' } }, who),
+        h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, p.list.length + ' 条' + ((style && style.length) ? ' · 说法 ' + style.length + ' 条' : '')),
+        h('td', null,
+          edit
+            ? h('textarea', { className: 'ab-textarea', style: { minHeight: 64, fontFamily: 'inherit', width: '100%' }, value: text, onChange: (e) => setText(e.target.value), placeholder: '一行一条经验' })
+            : h(Clip, { text: joined, n: 70, max: 560 }),
+          open ? h(StyleEditor, { k: p.key, label: '说话方式', list: style || [], toast, onSaved }) : null),
+        h('td', { style: { whiteSpace: 'nowrap' } },
+          h('span', { className: 'ab-flex', style: { gap: 4, flexDirection: 'column', alignItems: 'flex-start' } },
+            edit
+              ? h(Fragment, null,
+                h(Btn, { small: true, kind: 'primary', disabled: !changed, onClick: async () => { const r = await post('/insights/save', { key: p.key, list: text.split('\n') }); toast(r.message, 'ok'); setEdit(false); onSaved() } }, '保存'),
+                h(Btn, { small: true, kind: 'ghost', onClick: () => { setEdit(false); setText(p.list.map((x) => x.text).join('\n')) } }, '取消'))
+              : h(Btn, { small: true, kind: 'ghost', onClick: () => setEdit(true) }, '改'),
+            h(Btn, { small: true, kind: 'ghost', onClick: () => setOpen(!open) }, open ? '收起说法' : '说话方式'))))
     }
 
     function MemoryRow({ m, onChanged, toast }) {
       const [edit, setEdit] = useState(false)
       const [text, setText] = useState(m.text)
       if (m.invalidAt) {
-        return h('div', { className: 'ab-li', style: { opacity: 0.6 } },
-          h('div', { className: 'meta' }, timeAgo(m.invalidAt), h('br'), h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, '已过时')),
-          h('div', { className: 'body' }, h('s', null, (m.aboutName ? '[' + m.aboutName + '] ' : '') + m.text), m.supersededText ? h('div', { className: 'ab-muted ab-small' }, '→ 现在是：' + m.supersededText) : null),
-          h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/restore', { id: m.id }); toast('恢复了', 'ok'); onChanged() } }, '恢复'),
-          h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/delete', { id: m.id }); onChanged() } }, '删掉'))
+        return h('tr', { style: { opacity: 0.62 } },
+          h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(m.invalidAt)),
+          h('td', { className: 'ab-small' }, h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, '已过时')),
+          h('td', null,
+            h('s', null, (m.aboutName ? '[' + m.aboutName + '] ' : '') + m.text),
+            m.supersededText ? h('div', { className: 'ab-muted ab-small' }, '→ 现在是：' + m.supersededText) : null),
+          h('td', { style: { whiteSpace: 'nowrap' } },
+            h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/restore', { id: m.id }); toast('恢复了', 'ok'); onChanged() } }, '恢复'),
+            h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/delete', { id: m.id }); onChanged() } }, '删掉')))
       }
-      return h('div', { className: 'ab-li' },
-        h('div', { className: 'meta' }, timeAgo(m.at), h('br'), h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, SOURCE[m.source] || '记忆')),
-        edit ? h('input', { className: 'ab-input wide', value: text, onChange: (e) => setText(e.target.value), onKeyDown: async (e) => { if (e.key === 'Enter') { await post('/memory/update', { id: m.id, text }); setEdit(false); toast('改好了', 'ok'); onChanged() } if (e.key === 'Escape') setEdit(false) } })
-          : h('div', { className: 'body' }, m.aboutName ? h('b', null, '[' + m.aboutName + '] ') : null, m.text, m.importance >= 0.8 ? h('span', { title: '很重要' }, ' ★') : null),
-        h(Btn, { small: true, kind: 'ghost', onClick: () => setEdit(!edit) }, edit ? '取消' : '改'),
-        h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/delete', { id: m.id }); onChanged() } }, '忘掉'))
+      return h('tr', null,
+        h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(m.at)),
+        h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, SOURCE[m.source] || '记忆')),
+        h('td', null, edit
+          ? h('input', { className: 'ab-input', style: { width: '100%' }, value: text, onChange: (e) => setText(e.target.value), onKeyDown: async (e) => { if (e.key === 'Enter') { await post('/memory/update', { id: m.id, text }); setEdit(false); toast('改好了', 'ok'); onChanged() } if (e.key === 'Escape') setEdit(false) } })
+          : h(Fragment, null,
+            m.aboutName ? h('b', null, '[' + m.aboutName + '] ') : null,
+            h(Clip, { text: m.text, n: 70, max: 620 }),
+            m.importance >= 0.8 ? h('span', { title: '很重要' }, ' ★') : null)),
+        h('td', { style: { whiteSpace: 'nowrap' } },
+          h(Btn, { small: true, kind: 'ghost', onClick: () => setEdit(!edit) }, edit ? '取消' : '改'),
+          h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/delete', { id: m.id }); onChanged() } }, '忘掉')))
     }
 
     /** 导入音色：把 .zip / .pth / .index 拖进来或点选，自动识别；下面列出已有的音色，可以删。 */
@@ -2577,6 +2655,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const load = () => get('/bili/state').then(setS).catch((e) => toast(e.message, 'err'))
       const loadShots = () => get('/bili/shots').then((r) => setShots(r.items || [])).catch((e) => { setShots([]); toast(e.message, 'err') })
       useEffect(() => { load(); loadShots() }, [])
+      const pg = usePager(s ? s.history : [])
       const act = (path, label) => async () => { setBusy(label); const r = await post(path); setBusy(''); toast(r.message, r.ok ? 'ok' : 'err'); load(); loadShots() }
       const acct = s && s.account
       return h('div', { className: 'ab-grid' },
@@ -2627,9 +2706,18 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             '今天自动刷了 ' + s.runs + ' 轮 · 评论 ' + s.comments + ' 条（对外可见 ' + (s.commentsVisible || 0) + '，待审 ' + (s.commentsPending || 0) + '） · 回复 ' + s.replies + ' 条' + (s.likes ? ' · 点赞 ' + s.likes + ' 个' : '') + (s.lastRun ? ' · 上次 ' + timeAgo(s.lastRun) : '') + '（手动刷不占次数）') : null,
           s && s.lastError ? h('div', { className: 'ab-small', style: { marginBottom: 8, color: 'var(--ab-warn)' } }, '最近一次失败（' + s.lastError.kind + '）：' + s.lastError.message) : null,
           !s ? h(Empty, { icon: '⏳', text: '加载中…' }) : s.history.length === 0 ? h(Empty, { icon: '📺', text: '还没刷过。点「现在刷一轮」试试。' }) :
-            h('div', { className: 'ab-list' }, s.history.map((x, i) => h('div', { key: i, className: 'ab-li' },
-              h('div', { className: 'meta' }, timeAgo(x.at), h('br'), BILI_KIND[x.kind] || x.kind),
-              h('div', { className: 'body' }, x.bvid ? h('a', { href: 'https://www.bilibili.com/video/' + x.bvid, target: '_blank', rel: 'noreferrer' }, '《' + x.title + '》') : h('b', null, '《' + x.title + '》'), x.text ? h('div', { className: 'ab-muted' }, x.text) : null)))),
+            h('div', null,
+              h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'ab-table' },
+                  h('thead', null, h('tr', null, ['时间', '做了什么', '视频', '内容'].map((x) => h('th', { key: x }, x)))),
+                  h('tbody', null, pg.rows.map((x, i) => h('tr', { key: i },
+                    h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(x.at)),
+                    h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, BILI_KIND[x.kind] || x.kind),
+                    h('td', null, x.bvid
+                      ? h('a', { href: 'https://www.bilibili.com/video/' + x.bvid, target: '_blank', rel: 'noreferrer', title: x.title }, '《' + String(x.title || '').slice(0, 26) + (String(x.title || '').length > 26 ? '…' : '') + '》')
+                      : h(Clip, { text: '《' + (x.title || '') + '》', n: 26 })),
+                    h('td', null, h(Clip, { text: x.text, n: 46, max: 420 }))))))),
+              h(Pager, { page: pg.page, total: pg.total, setPage: pg.setPage, count: pg.count })),
         ),
       )
     }
@@ -3097,6 +3185,32 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       return v >= 1e8 ? (v / 1e8).toFixed(2) + ' 亿' : v >= 1e4 ? (v / 1e4).toFixed(1) + ' 万' : String(Math.round(v))
     }
     const dayShort = (d) => String(d || '').slice(5)
+
+    /** 长文本：超过 n 个字截断，鼠标悬停看全文 */
+    const Clip = ({ text, n = 50, max = 320 }) => {
+      const t = String(text == null ? '' : text)
+      if (!t) return null
+      return h('span', { className: 'ab-clip', style: { maxWidth: max }, title: t.length > n ? t : '' }, t.length > n ? t.slice(0, n) + '…' : t)
+    }
+
+    /** 表格分页：默认一页 10 条 */
+    function usePager(all, size = 10) {
+      const [page, setPage] = useState(0)
+      const list = all || []
+      const total = Math.max(1, Math.ceil(list.length / size))
+      const cur = Math.min(page, total - 1)
+      return { rows: list.slice(cur * size, cur * size + size), page: cur, total, setPage, count: list.length }
+    }
+
+    function Pager({ page, total, setPage, count }) {
+      if (total <= 1) return null
+      const b = (label, to, dis) => h('button', { type: 'button', className: 'ab-btn sm ghost', disabled: !!dis, onClick: () => setPage(to) }, label)
+      return h('div', { className: 'ab-pager' },
+        h('span', { className: 'ab-muted ab-small' }, '共 ' + count + ' 条'),
+        b('‹ 上一页', page - 1, page <= 0),
+        h('span', { className: 'ab-small' }, (page + 1) + ' / ' + total),
+        b('下一页 ›', page + 1, page >= total - 1))
+    }
     /** 这条 QQ 会话是什么类型。 */
     const chatKind = (c) => {
       const id = String(c.chatId || '')
@@ -3111,6 +3225,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const peak = Math.max(1, ...rows.map((d) => Math.max(d.received || 0, d.sent || 0)))
       const totals = (data && data.totals) || {}
       const chats = (data && data.chats) || []
+      const pgc = usePager(chats)
+      const pgd = usePager(rows.slice().reverse())
       const many = rows.length > 10
       const bar = (v, strong) => h('div', {
         style: { flex: '1 1 0', minWidth: 2, maxWidth: many ? 6 : 9, height: Math.max(2, Math.round(92 * (v || 0) / peak)), borderRadius: 2, background: 'var(--ab-sea)', opacity: strong ? 1 : 0.4 },
@@ -3131,16 +3247,17 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             h('div', { className: 'ab-muted ab-small', style: { marginTop: 6 } },
               h('i', { className: 'ab-dot ok', style: { background: 'var(--ab-sea)' } }), ' 收到  ',
               h('i', { className: 'ab-dot', style: { background: 'var(--ab-sea)', opacity: 0.4 } }), ' 发出'),
-            h('div', { style: { marginTop: 16 } }, rows.slice().reverse().map((d) => h('div', { key: d.day, className: 'ab-row', style: { padding: '5px 0', borderTop: '1px solid var(--ab-line)' } },
+            h('div', { style: { marginTop: 16 } }, pgd.rows.map((d) => h('div', { key: d.day, className: 'ab-row', style: { padding: '5px 0', borderTop: '1px solid var(--ab-line)' } },
               h('span', { style: { minWidth: 92 } }, d.day),
               h('span', { className: 'ab-muted ab-small', style: { flex: 1 } }, `收 ${d.received} · 发 ${d.sent}` + (d.stickers ? ` · 表情 ${d.stickers}` : '') + (d.voice ? ` · 语音 ${d.voice}` : '') + (d.asr ? ` · 识别 ${d.asr}` : '') + (d.song ? ` · 翻唱 ${d.song}` : '') + (d.image ? ` · 生图 ${d.image}` : '') + (d.errors ? ` · 出错 ${d.errors}` : ''))))),
+            h(Pager, { page: pgd.page, total: pgd.total, setPage: pgd.setPage, count: pgd.count }),
           )),
         h(Card, { title: '按会话', desc: '今天的收发，加上这条会话至今累计的 token（含缓存部分，所以数字看着大）；还没用过模型的显示 —。' },
           !data ? h(Empty, { icon: '⏳', text: '加载中…' }) : chats.length === 0 ? h(Empty, { icon: '💬', text: '还没有任何 QQ 会话' }) :
             h('div', { style: { overflowX: 'auto' } },
               h('table', { className: 'ab-table' },
                 h('thead', null, h('tr', null, ['会话', '类型', '今天（收 / 发）', '累计 token', '缓存命中', '建于'].map((x) => h('th', { key: x }, x)))),
-                h('tbody', null, chats.map((c) => {
+                h('tbody', null, pgc.rows.map((c) => {
                   const t = c.tokens
                   const billed = t ? t.uncached + t.cacheRead + t.cacheWrite : 0
                   const hit = t && billed > 0 ? Math.round((t.cacheRead / billed) * 100) : null
@@ -3154,8 +3271,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
                     h('td', { className: 'ab-small' }, t ? fmtTok(billed + t.output) : h('span', { className: 'ab-muted' }, '—')),
                     h('td', { className: 'ab-small' }, hit !== null ? hit + '%' : h('span', { className: 'ab-muted' }, '—')),
                     h('td', { className: 'ab-small ab-muted' }, c.bornDay || '—'))
-                })))))
-      )
+                })))),
+              h(Pager, { page: pgc.page, total: pgc.total, setPage: pgc.setPage, count: pgc.count })))
     }
 
     // ---------------- 会话管理 ----------------
@@ -3177,7 +3294,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         try { await navigator.clipboard.writeText(text); toast('复制了：' + text) } catch (e) { toast('复制失败，手动选中吧：' + text) }
       }
       const list = (data && data.list) || []
-      const cells = list.map((c) => {
+      const pg = usePager(list)
+      const cells = pg.rows.map((c) => {
         const t = c.tokens
         const billed = t ? t.uncached + t.cacheRead + t.cacheWrite : 0
         const used = billed + (t ? t.output : 0)
@@ -3205,6 +3323,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             h('table', { className: 'ab-table' },
               h('thead', null, h('tr', null, ['会话', '类型', '今天', '累计 token', '建于', '会话 ID', ''].map((x) => h('th', { key: x }, x)))),
               h('tbody', null, cells))),
+          h(Pager, { page: pg.page, total: pg.total, setPage: pg.setPage, count: pg.count }),
           h('div', { className: 'ab-small ab-muted', style: { marginTop: 10 } }, '这里只是插件的「QQ 会话」视图；DSH 里手动开的会话不在这里。要全部重来，可以在「概览 → 快捷操作」里一次归档所有 QQ 会话。'))
       return h('div', { className: 'ab-grid' },
         h(Card, {
@@ -3244,6 +3363,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         a.remove()
         setTimeout(() => URL.revokeObjectURL(url), 5000)
       }
+      const pgf = usePager(files)
       const areaOpts = [{ value: '', label: '所有模块' }].concat(areas.map((a) => ({ value: a, label: a })))
       return h('div', { className: 'ab-grid' },
         h(Card, {
@@ -3261,11 +3381,16 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             : items.length === 0 ? h(Empty, { text: kw ? `没有包含「${kw}」的日志` : '没有符合条件的日志' })
             : h('div', { className: 'ab-logs' }, items.slice().reverse().map((e, i) => h(LogLine, { key: i, e })))),
         files.length ? h(Card, { title: '日志文件', desc: '按天一个文件，默认留 14 天。' },
-          h('div', { className: 'ab-list' }, files.map((f) => h('div', { key: f.name, className: 'ab-li' },
-            h('div', { className: 'meta' }, f.name, h('br'), fmtSize(f.size)),
-            h('div', { className: 'body' },
-              h('div', { className: 'ab-muted ab-small' }, new Date(f.at).toLocaleString()),
-              h(Btn, { small: true, onClick: () => download(f.name) }, '下载')))) )) : null)
+          h('div', null,
+            h('div', { style: { overflowX: 'auto' } },
+              h('table', { className: 'ab-table' },
+                h('thead', null, h('tr', null, ['文件', '大小', '时间', ''].map((x) => h('th', { key: x }, x)))),
+                h('tbody', null, pgf.rows.map((f) => h('tr', { key: f.name },
+                  h('td', { className: 'ab-small' }, f.name),
+                  h('td', { className: 'ab-small ab-muted' }, fmtSize(f.size)),
+                  h('td', { className: 'ab-small ab-muted' }, new Date(f.at).toLocaleString()),
+                  h('td', null, h(Btn, { small: true, onClick: () => download(f.name) }, '下载'))))))),
+            h(Pager, { page: pgf.page, total: pgf.total, setPage: pgf.setPage, count: pgf.count }))) : null)
     }
 
     // ---------------- 备份迁移 ----------------
@@ -3383,15 +3508,21 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('div', { className: 'ab-muted ab-small' }, desc),
           h('div', { className: 'ab-muted ab-small' }, files ? files + ' 个文件 · ' + fmtSize(bytes) : '现在没有')))
       const autoList = (auto && auto.list) || []
-      const autoRows = autoList.map((x) => h('div', { key: x.name, className: 'ab-li' },
-        h('div', { className: 'meta' }, x.name, h('br'), fmtSize(x.bytes)),
-        h('div', { className: 'body' },
-          h('div', { className: 'ab-muted ab-small' }, new Date(x.at).toLocaleString()),
-          h('div', { className: 'ab-flex', style: { marginTop: 6 } },
-            h(Btn, { small: true, disabled: busy === 'restore', onClick: () => restore(x.name) }, '恢复这份'),
-            h(Btn, { small: true, kind: 'ghost', onClick: () => drop(x.name) }, '删除')))))
-      const autoBody = autoRows.length
-        ? h('div', { className: 'ab-list', style: { marginTop: 10 } }, autoRows)
+      const pga = usePager(autoList)
+      const autoRows = pga.rows.map((x) => h('tr', { key: x.name },
+        h('td', { className: 'ab-small' }, h(Clip, { text: x.name, n: 34, max: 320 })),
+        h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, fmtSize(x.bytes)),
+        h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, new Date(x.at).toLocaleString()),
+        h('td', { style: { whiteSpace: 'nowrap' } },
+          h(Btn, { small: true, disabled: busy === 'restore', onClick: () => restore(x.name) }, '恢复这份'),
+          h(Btn, { small: true, kind: 'ghost', onClick: () => drop(x.name) }, '删除'))))
+      const autoBody = autoList.length
+        ? h('div', { style: { marginTop: 10 } },
+          h('div', { style: { overflowX: 'auto' } },
+            h('table', { className: 'ab-table' },
+              h('thead', null, h('tr', null, ['备份文件', '大小', '时间', ''].map((x) => h('th', { key: x }, x)))),
+              h('tbody', null, autoRows))),
+          h(Pager, { page: pga.page, total: pga.total, setPage: pga.setPage, count: pga.count }))
         : h('div', { className: 'ab-muted ab-small', style: { marginTop: 8 } }, '还没有备份。')
       const autoCard = h(Card, {
         title: '自动备份',

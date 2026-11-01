@@ -337,6 +337,8 @@ export function createBili({ getConfig, hub, memory, log, dsh, api: injected, vi
       s.seen = [...seen].slice(-500)
       if (!looked.length) return { ok: false, message: '视频都打不开' }
       const commentLeft = c.comment && canPost(s) ? Math.max(0, c.maxCommentsPerDay - s.comments) : 0
+      if (c.comment && canPost(s) && commentLeft <= 0) log.info(`今天的评论配额用完了（${s.comments}/${c.maxCommentsPerDay}），这一轮只看不评`)
+      if (c.comment && !canPost(s)) log.info(`今天不发评论：${s.pauseReason || '没登录 Cookie'}`)
       const out = await think(`你在 B 站刷到了这几个视频：\n\n${looked.map((x, i) => `【${i + 1}】${x.digest}`).join('\n\n')}\n\n` +
         `看完说说你的想法。对每个视频给一个对象：{"i":序号, "feeling":"一句你的真实感受", "comment":"想在视频下发的评论（像普通观众，一两句、别打广告，不想评就空字符串）", "share":"想私聊分享给${owner()}的话（觉得${owner()}会喜欢才写，不然空字符串）", "remember":"值得记住的一件事（没有就空字符串）"}。` +
         `这次最多评论 ${Math.min(commentLeft, Math.max(1, Math.round(Number(c.maxCommentsPerRound) || 1)))} 个，而且不是非评不可——没什么想说的就不评。只输出 JSON 数组。`)
@@ -355,6 +357,7 @@ export function createBili({ getConfig, hub, memory, log, dsh, api: injected, vi
         const comment = String(d.comment || '').trim()
         const perRound = Math.min(commentLeft, Math.max(1, Math.round(Number(c.maxCommentsPerRound) || 1)))
         const why = !comment || isSilence(comment) ? '没有想说的话'
+          : commentLeft <= 0 ? '今天的评论配额用完了'
           : commented >= perRound ? '这一轮已经评过了'
           : Math.random() > Number(c.commentChance ?? 0.35) ? '这轮没抽中（评论概率）'
           : commentSkipReason(x, comment, s, { commentLeft, commented })
