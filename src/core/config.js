@@ -163,6 +163,12 @@ export const DEFAULTS = {
     ffmpegPath: '', // 留空从 PATH 查找
     shotChance: 0.35, // 刷完发截图给主人；0 = 不自动发
     shotLibrary: 300,
+    commentChance: 0.35, // 有想说的也不一定发，按这个概率来
+    maxCommentsPerRound: 1, // 一轮最多评几条
+    exploreChance: 0.15, // 抽一个「不感兴趣但可能好看」的位置的概率
+    anchorRequired: true, // 评论里必须有视频里的具体内容（不然就是「好看」「有意思」这种空话，不发）
+    commentMinChars: 6, // 评论短于这个字数就不发
+    replyMention: false, // 回复别人时要不要手写「回复 @名字：」（B 站自己会显示，默认不写）
   },
   // 刷抖音：专用浏览器（独立登录资料，不碰你平时的浏览器），经 CDP 控制。浏览 / 点赞 / 评论 / 分享各项权限在 profilePerms.douyin*。
   douyin: {
@@ -398,6 +404,12 @@ export function normalize(raw) {
   for (const k of ['enabled', 'autoBrowse', 'comment', 'reply', 'shareToOwner', 'like', 'vision']) b[k] = bool(b[k], DEFAULTS.bili[k])
   b.visionFrames = Math.round(num(b.visionFrames, 6, 2, 12))
   b.ffmpegPath = String(b.ffmpegPath || '').trim()
+  b.commentChance = num(b.commentChance, 0.35, 0, 1)
+  b.maxCommentsPerRound = Math.round(num(b.maxCommentsPerRound, 1, 1, 5))
+  b.exploreChance = num(b.exploreChance, 0.15, 0, 1)
+  b.anchorRequired = bool(b.anchorRequired, true)
+  b.commentMinChars = Math.round(num(b.commentMinChars, 6, 2, 60))
+  b.replyMention = bool(b.replyMention, false)
   b.shotChance = num(b.shotChance, 0.35, 0, 1)
   b.shotLibrary = Math.round(num(b.shotLibrary, 300, 20, 2000))
   b.intervalHours = num(b.intervalHours, 4, 1, 48)

@@ -26,4 +26,4 @@ const TOPICS = ['吃饭', '饿了', '游戏', '追剧', '番剧', '动漫', '猫
 export const UP = [...new Set([...PRAISE, ...LIKES])]
 
 /** 群聊话题相关度的词表。 */
-export const INTERESTS = [...new Set([...LIKES, ...TOPICS])]
+export const INTERESTS = [...new Set([...TOPICS, '好吃的'])]

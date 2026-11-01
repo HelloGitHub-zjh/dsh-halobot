@@ -134,7 +134,7 @@ export function createBiliApi({ getCookie, log, fetchImpl = fetch }) {
     const d = await req(await signed('https://api.bilibili.com/x/web-interface/wbi/view', bvid ? { bvid } : { aid }))
     return {
       bvid: d.bvid, aid: d.aid, cid: d.cid, title: d.title, desc: String(d.desc || '').slice(0, 600), author: d.owner?.name, authorMid: d.owner?.mid,
-      play: d.stat?.view || 0, like: d.stat?.like || 0, reply: d.stat?.reply || 0, pubdate: (d.pubdate || 0) * 1000, duration: d.duration, tname: d.tname,
+      play: d.stat?.view || 0, like: d.stat?.like || 0, reply: d.stat?.reply || 0, pubdate: (d.pubdate || 0) * 1000, duration: d.duration, tname: d.tname, pic: d.pic || '',
     }
   }
 
@@ -178,6 +178,15 @@ export function createBiliApi({ getCookie, log, fetchImpl = fetch }) {
   async function comments(aid, { limit = 12 } = {}) {
     const d = await req(await signed('https://api.bilibili.com/x/v2/reply/wbi/main', { type: 1, oid: aid, mode: 3, plat: 1, web_location: 1315875 }))
     return (d.replies || []).slice(0, limit).map((r) => ({ rpid: r.rpid, name: r.member?.uname, mid: r.mid, text: String(r.content?.message || '').slice(0, 200), like: r.like, replies: r.rcount || 0 }))
+  }
+
+  /** 按时间（sort=0）或热度（sort=2）翻一级评论；只包含对外可见的。 */
+  async function replyList(aid, { sort = 0, pn = 1, ps = 20 } = {}) {
+    const d = await req(`https://api.bilibili.com/x/v2/reply?type=1&oid=${aid}&sort=${sort}&pn=${pn}&ps=${ps}`)
+    return (d.replies || []).map((r) => ({
+      rpid: r.rpid, mid: r.mid, name: r.member?.uname,
+      text: String(r.content?.message || '').slice(0, 200), like: r.like, ctime: (r.ctime || 0) * 1000,
+    }))
   }
 
   /** 发评论；root/parent 不传就是一级评论。要登录。 */
@@ -237,5 +246,5 @@ export function createBiliApi({ getCookie, log, fetchImpl = fetch }) {
     return r.headers.get('location') || ''
   }
 
-  return { nav, search, popular, view, playurl, subtitle, comments, postComment, likeVideo, setSign, setFace, replyFeed, resolveShort }
+  return { nav, search, popular, view, playurl, subtitle, comments, postComment, likeVideo, setSign, setFace, replyFeed, replyList, resolveShort }
 }

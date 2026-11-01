@@ -41,7 +41,7 @@ QQ ⇄ SnowLuma（OneBot v11）⇄ Halobot 插件 ⇄ DSH 会话（自带 preset
 
 ```bash
 # 从 GitHub 装（推荐，认准 tag）
-dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.4.0
+dsh plugin --profile desktop add github:HelloGitHub-zjh/dsh-halobot#v3.5.0
 
 # 或者 clone 下来本地装
 git clone git@github.com:HelloGitHub-zjh/dsh-halobot.git
