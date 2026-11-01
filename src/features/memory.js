@@ -84,11 +84,27 @@ export function search(idx, query, o = {}) {
       why.push([t, part])
     }
     const it = d.it
-    if (it.invalidAt && !o.includeInvalid) continue
+    if (it.invalidAt && !o.includeInvalid && !o.includeExpired) continue
+    // 有效期：默认只召回还有效的；问到「以前」或显式 includeExpired 时才把失效的也拿出来
+    const vf = Number(it.validFrom) || Number(it.at) || 0
+    const vt = Number(it.validTo) || 0
+    if (vt && vt < now && !o.includeExpired) continue
     const aboutHit = Boolean(it.about) && aboutSet.has(String(it.about))
     if (s <= 0 && !aboutHit) continue
     const importance = 0.6 + 0.8 * (Number(it.importance) || 0.5)
-    const score = (s + (aboutHit ? 0.8 : 0)) * importance * (0.55 + 0.45 * retention(it, now))
+    let score = (s + (aboutHit ? 0.8 : 0)) * importance * (0.55 + 0.45 * retention(it, now))
+    // 时间意图只加分不回淘汰：落在说的那个时间段里的记忆抬一点，其它照旧参与排序
+    let inRange = false
+    if (o.range) {
+      // 区间重叠：一条记忆在它「成立到失效」的跨度里和问到的那段时间有交集就算命中
+      const r = o.range
+      const until = vt || now
+      inRange = (!r.before || vf <= r.before) && (!r.from || until >= r.from)
+      if (inRange) score *= Number(r.weight) || 1.35
+    }
+    if (o.kind && it.kind === o.kind) score *= 1.15
+    // 一天的印象是概括性的，平时降权；只有问到的正是那一天，才当正经答案用
+    if (it.source === 'episode' && !inRange) score *= 0.6
     scored.push({ it, score, why: why.sort((x, y) => y[1] - x[1]).slice(0, 3).map((w) => w[0]).concat(aboutHit ? ['（关于这个人）'] : []) })
   }
   scored.sort((x, y) => y.score - x.score)
@@ -121,7 +137,50 @@ export function whenText(at, now = Date.now()) {
 
 /** 想起来的一条记忆怎么写给她：[什么时候] [关于谁] 内容。 */
 export function memoryLine(it, now = Date.now()) {
-  return `[${whenText(it.at, now)}] ` + (it.aboutName ? `[${it.aboutName}] ` : '') + it.text
+  const expired = Number(it.validTo) > 0 && Number(it.validTo) < now
+  return `[${whenText(it.at, now)}] ` + (it.aboutName ? `[${it.aboutName}] ` : '') + it.text + (expired ? '（以前的说法）' : '')
+}
+
+/** 记忆的类型：事实、偏好、计划、经历、关系。类型只用于检索加权和面板筛选，不影响文本。 */
+export const KINDS = ['fact', 'preference', 'plan', 'event', 'relation']
+export const KIND_LABEL = { fact: '事实', preference: '偏好', plan: '计划', event: '经历', relation: '关系' }
+
+/** 没有类型时按文本猜一个（模型没给 kind 时的兜底）。 */
+export function classifyKind(text) {
+  const t = String(text || '')
+  if (/主人|朋友|同事|同学|家人|妈妈|爸爸|哥哥|姐姐|弟弟|妹妹|老婆|老公|男朋友|女朋友|老师|老板|称呼/.test(t)) return 'relation'
+  if (/喜欢|讨厌|爱吃|不爱吃|最爱|最怕|受不了|害怕|习惯了|口味|不喜欢/.test(t)) return 'preference'
+  if (/约定|说好|答应|打算|计划|下次|以后要|约好|准备去/.test(t)) return 'plan'
+  if (/去了|看了|吃了|玩了|今天|昨天|前天|刚刚|那次|第一次|发生/.test(t)) return 'event'
+  return 'fact'
+}
+
+/** 从「昨天」「上周」「三年前」「2024 年」这些话里取一个起点时间；认不出返回 null。 */
+export function parseWhen(text, now = Date.now()) {
+  const t = String(text || '')
+  const w = timeWindow(t, now)
+  if (w && typeof w.from === 'number') return w.from
+  const y = t.match(/(20\d{2})\s*年/)
+  if (y) return new Date(Number(y[1]), 0, 1).getTime()
+  if (/去年/.test(t)) { const d = new Date(now); return new Date(d.getFullYear() - 1, 0, 1).getTime() }
+  if (/前年/.test(t)) { const d = new Date(now); return new Date(d.getFullYear() - 2, 0, 1).getTime() }
+  if (/今年/.test(t)) { const d = new Date(now); return new Date(d.getFullYear(), 0, 1).getTime() }
+  return null
+}
+
+/** 老数据没这些字段：读的时候补默认值，不批量改文件。 */
+export function normalizeItem(m) {
+  if (!m || typeof m !== 'object') return m
+  if (!KINDS.includes(m.kind)) m.kind = m.source === 'diary' || m.source === 'episode' || m.source === 'event' ? 'event' : classifyKind(m.text)
+  if (!Number.isFinite(Number(m.validFrom))) m.validFrom = Number(m.at) || Date.now()
+  if (m.invalidAt && !m.validTo) m.validTo = Number(m.invalidAt)
+  if (!Number.isFinite(Number(m.confidence))) m.confidence = Math.max(0, Math.min(1, Number(m.importance) || 0.5))
+  return m
+}
+
+/** 把模型写的一天印象收拾干净：去掉包裹的引号、压成一行、限长。 */
+export function cleanEpisode(text) {
+  return String(text || '').replace(/\s+/g, ' ').trim().replace(/^["'「]/, '').replace(/["'」]$/, '').trim().slice(0, 160)
 }
 
 /**
@@ -131,6 +190,8 @@ export function memoryLine(it, now = Date.now()) {
 export function shouldForget(m, now = Date.now()) {
   // 过时的留半年（面板里能看到、能恢复），之后清掉
   if (m.invalidAt) return now - m.invalidAt > 180 * 86400_000
+  // 一天的印象留半年：久了就没必要再占地方
+  if (m.source === 'episode') return now - (Number(m.at) || 0) > 180 * 86400_000
   if (m.source !== 'auto') return false
   if ((Number(m.importance) || 0) >= 0.6) return false
   return retention(m, now) < 0.05
@@ -232,9 +293,53 @@ export function expandTerms(query, hits) {
   return [...cnt].filter(([, n]) => n >= 2).map(([t]) => t).slice(0, 4)
 }
 
+/**
+ * 从问句里认出时间意图，返回一个时间窗（只用来「加分」，绝不因为不在窗里就排除）。
+ * 支持：今天/昨天/前天/大前天/上周/这周/上个月/上上个月/前天以前/N 天前/N 周前/N 个月前。
+ */
+export function timeWindow(query, now = Date.now()) {
+  const q = String(query || '')
+  const day = 86400_000
+  const startOfToday = new Date(now)
+  startOfToday.setHours(0, 0, 0, 0)
+  const t0 = startOfToday.getTime()
+  const span = (from, before) => (from || before ? { from, before, weight: 1.35 } : null)
+  if (/大前天/.test(q)) return span(t0 - 3 * day, t0 - 2 * day)
+  if (/前天/.test(q)) return span(t0 - 2 * day, t0 - day)
+  if (/昨天|昨晚/.test(q)) return span(t0 - day, t0)
+  if (/今天|今晚|今早|刚才|刚刚/.test(q)) return span(t0, now + 1000)
+  if (/上周|上个星期/.test(q)) return span(t0 - 7 * day, t0)
+  if (/这周|本周/.test(q)) return span(t0 - 6 * day, now + 1000)
+  if (/上个月|上月/.test(q)) return span(t0 - 31 * day, t0 - 7 * day)
+  const CN_NUM = { 一: 1, 二: 2, 两: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10 }
+  const cnToNum = (raw) => {
+    if (/^\d+$/.test(raw)) return Number(raw)
+    if (raw.includes('十')) {
+      const [a, b] = raw.split('十')
+      const tens = a ? CN_NUM[a] || 1 : 1
+      const ones = b ? CN_NUM[b] || 0 : 0
+      return tens * 10 + ones
+    }
+    return CN_NUM[raw] || 0
+  }
+  const n = q.match(/([0-9]+|[一二两三四五六七八九十]+)\s*(天|日|周|个?星期|个?月)\s*(前|之前|以前)/)
+  if (n) {
+    const k = cnToNum(n[1])
+    const unit = n[2]
+    const len = /月/.test(unit) ? 30 * day : /周|星期/.test(unit) ? 7 * day : day
+    if (k > 0 && k <= 400) return span(now - (k + 1) * len, now - (k - 1) * len)
+  }
+  if (/以前|之前|那次|那时候/.test(q)) return span(null, now - 30 * day)
+  return null
+}
+
 export function createMemoryStore({ dsh, getConfig, hub, log }) {
   const file = () => dataDir('memories.json')
-  const load = () => readJson(file(), () => ({ items: [] }))
+  const load = () => {
+    const s = readJson(file(), () => ({ items: [] }))
+    for (const m of s.items || []) normalizeItem(m)
+    return s
+  }
   const save = (s) => {
     writeJson(file(), s)
     cache = null
@@ -341,12 +446,16 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     return { days: byDay.size, lines: h.lines.length, keepDays: HISTORY_KEEP_DAYS, oldest: h.lines[0]?.day || '', newest: h.lines.at(-1)?.day || '' }
   }
 
-  function add({ text, about = '', aboutName = '', tags = [], importance = 0.5, source = 'tool', chatId = '' }) {
+  function add({ text, about = '', aboutName = '', tags = [], importance = 0.5, source = 'tool', chatId = '', day = '', kind = '', validFrom = 0, confidence = 0 }) {
     const t = String(text || '').trim().slice(0, 200)
     if (!t) return { ok: false, message: '内容是空的' }
     const s = load()
     // 去重：很像的就更新旧的（时间、重要程度取新），不重复存
-    const dup = s.items.find((m) => !m.invalidAt && similarity(m.text, t) >= 0.6 && (!about || !m.about || m.about === String(about)))
+    const k = KINDS.includes(kind) ? kind : classifyKind(t)
+    const conf = Number.isFinite(Number(confidence)) && Number(confidence) > 0 ? Math.min(1, Number(confidence)) : Math.max(0, Math.min(1, Number(importance) || 0.5))
+    const vf = Number(validFrom) > 0 ? Number(validFrom) : Date.now()
+    const sameFact = (m) => !m.invalidAt && (!m.validTo || m.validTo > Date.now()) && (m.kind || 'fact') === k && similarity(m.text, t) >= 0.6 && (!about || !m.about || m.about === String(about))
+    const dup = s.items.find(sameFact)
     if (dup) {
       dup.text = t.length >= dup.text.length ? t : dup.text
       dup.at = Date.now()
@@ -356,6 +465,10 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
       return { ok: true, message: '✓', updated: dup.id }
     }
     const item = { id: randomUUID().slice(0, 8), text: t, about: String(about || ''), aboutName: String(aboutName || ''), tags: (tags || []).slice(0, 5), importance: Math.max(0, Math.min(1, Number(importance) || 0.5)), source, chatId, at: Date.now(), hits: 0 }
+    if (day) item.day = String(day)
+    item.kind = k
+    item.validFrom = vf
+    item.confidence = conf
     s.items.push(item)
     if (s.items.length > 3000) s.items = s.items.sort((a, b) => (b.importance - a.importance) || (b.at - a.at)).slice(0, 3000)
     save(s)
@@ -431,11 +544,17 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
   }
 
   /** 标成过时：不再被想起，但不删（面板里能看到被哪条取代、能恢复）。 */
+  /** 旧的被新的取代：标失效时间 + 指向新条目（面板可恢复）。 */
+  function supersede(id, byId = '') {
+    return invalidate(id, byId)
+  }
+
   function invalidate(id, byId = '') {
     const s = load()
     const m = s.items.find((x) => x.id === id)
     if (!m) return false
     m.invalidAt = Date.now()
+    m.validTo = m.validTo || m.invalidAt
     if (byId) m.supersededBy = byId
     s.rev = (s.rev || 0) + 1
     save(s)
@@ -469,9 +588,42 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
    *    不加延迟也不加钱——每轮多一次 LLM 调用对聊天机器人太贵了）；
    * 2. 「嗯嗯」「然后呢」这种短句：把上一句也当上下文找一遍。
    */
-  function recall(query, { about, limit, where = '', context = '' } = {}) {
-    const max = limit ?? getConfig().memory.recallCount
-    const hits = search(index(), query, { about, limit: max })
+  // 一轮对话里可能连着想起好几条：命中计数先攒着，30 秒（可配）写一次就够，
+  // 别每想起一条就把整个 memories.json 重写一遍。
+  let hitQueue = new Map()
+  let hitTimer = null
+  function flushHits() {
+    if (hitTimer) { clearTimeout(hitTimer); hitTimer = null }
+    if (!hitQueue.size) return 0
+    const queued = hitQueue
+    hitQueue = new Map()
+    const s = load()
+    const today = new Date().toDateString()
+    let changed = 0
+    for (const [id, n] of queued) {
+      const m = s.items.find((x) => x.id === id)
+      if (!m) continue
+      // 强度按「被想起过几天」算，同一天想起多次只算一次
+      if (!m.lastHit || new Date(m.lastHit).toDateString() !== today) m.hitDays = (m.hitDays || 0) + 1
+      m.hits = (m.hits || 0) + n
+      m.lastHit = Date.now()
+      changed++
+    }
+    if (changed) writeJson(file(), s)
+    return changed
+  }
+  function stageHits(hits) {
+    for (const h of hits) hitQueue.set(h.it.id, (hitQueue.get(h.it.id) || 0) + 1)
+    const ms = Number(getConfig().memory?.writeDebounceMs ?? 30000)
+    if (hitTimer) clearTimeout(hitTimer)
+    if (ms > 0) hitTimer = setTimeout(() => { try { flushHits() } catch (error) {} }, ms)
+    else flushHits()
+    if (hitTimer && typeof hitTimer.unref === 'function') hitTimer.unref()
+  }
+
+  function recall(query, { about, limit, where = '', context = '', range = null, includeExpired = false } = {}) {
+    const max = limit ?? (Number(getConfig().memory.recallMax) || Number(getConfig().memory.recallCount) || 6)
+    const hits = search(index(), query, { about, limit: max, range, includeExpired })
     const have = new Set(hits.map((h) => h.it.id))
     const push = (h, weight, tag) => {
       if (hits.length >= max || have.has(h.it.id)) return
@@ -481,29 +633,18 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const extra = expandTerms(query, hits)
     if (!hits.length) {
       // 一条都没命中（换个说法差得远）：退回字面兜底，别明明记得却想不起来
-      for (const h of looseSearch(load().items.filter((m) => !m.invalidAt), query, { limit: max })) push(h, 0.6, '')
+      for (const h of looseSearch(load().items.filter((m) => !m.invalidAt && (includeExpired || !m.validTo || m.validTo > Date.now())), query, { limit: max })) push(h, 0.6, '')
     }
     if (extra.length && hits.length < max) {
-      for (const h of search(index(), extra.join(' '), { about, limit: max, minScore: 0.3 })) push(h, 0.7, '（相近的说法）')
+      for (const h of search(index(), extra.join(' '), { about, limit: max, minScore: 0.3, range, includeExpired })) push(h, 0.7, '（相近的说法）')
     }
     if (context && hits.length < max) {
-      for (const h of search(index(), context, { about, limit: max, minScore: 0.5 })) push(h, 0.6, '（上一句）')
+      for (const h of search(index(), context, { about, limit: max, minScore: 0.5, range, includeExpired })) push(h, 0.6, '（上一句）')
     }
     hits.sort((a, b) => b.score - a.score)
     recallLog.unshift({ at: Date.now(), where, query: String(query).slice(0, 120), hits: hits.map((h) => ({ id: h.it.id, text: h.it.text, score: Number(h.score.toFixed(2)), why: h.why || [] })) })
     recallLog.length = Math.min(recallLog.length, 20)
-    if (hits.length) {
-      const s = load()
-      for (const h of hits) {
-        const m = s.items.find((x) => x.id === h.it.id)
-        if (!m) continue
-        // 强度按「被想起过几天」算，同一天想起多次只算一次
-        if (!m.lastHit || new Date(m.lastHit).toDateString() !== new Date().toDateString()) m.hitDays = (m.hitDays || 0) + 1
-        m.hits = (m.hits || 0) + 1
-        m.lastHit = Date.now()
-      }
-      writeJson(file(), s) // 只改命中计数，不动索引
-    }
+    if (hits.length) stageHits(hits)
     return hits
   }
 
@@ -714,10 +855,21 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const about = chat && chat.kind === 'private' ? chat.userId : undefined
     // 上一句一直当线索带着：「然后呢」「那个呢」靠它接上，说到一半换了话题也不至于断
     const ctxText = String(prevText || '').slice(-300)
-    const hits = recall(q, { about, where: (chat && chat.chatId) || '', context: ctxText }).filter((h) => !shown.has(h.it.id)).slice(0, 6)
+    // 条数不写死：命中得多就多给两条，寒暄就少给，别硬塞
+    const maxN = Math.min(20, Math.max(1, Number(cfg.recallMax) || 8))
+    const minN = Math.min(maxN, Math.max(1, Number(cfg.recallMin) || 3))
+    const range = cfg.timeBoost === false ? null : timeWindow(q)
+    const strict = cfg.strictValid !== false
+    let found = recall(q, { about, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: !strict }).filter((h) => !shown.has(h.it.id))
+    // 只算「还有效的」时一条都没有：把以前的说法也翻出来，但标清楚是旧的
+    if (!found.length) found = recall(q, { about, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: true, includeInvalid: true }).filter((h) => !shown.has(h.it.id))
+    const strong = found.filter((h) => h.score >= 0.5).length
+    const keep = Math.min(maxN, Math.max(minN, Math.ceil(strong * 1.5)))
+    const hits = found.slice(0, keep)
     if (!hits.length) return backdrop
+    const cap = Math.max(100, Number(cfg.recallMaxChars) || 500)
     let body = hits.map((h) => memoryLine(h.it)).join('；')
-    if (body.length > 500) body = body.slice(0, 500) + '…'
+    if (body.length > cap) body = body.slice(0, cap) + '…'
     return ['（你记得这些事，方括号里是什么时候的事，聊到相关的就自然用上，别把老事当新事说，也别说「根据记忆」：' + body + '）', backdrop].filter(Boolean).join('\n')
   }
 
@@ -788,9 +940,9 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const ppl = new Set([...String(transcript).matchAll(/\((\d{5,})\)/g)].map((m) => m[1]))
     if (chatId.startsWith('private:')) ppl.add(chatId.slice(8))
     const items = load().items.filter((m) => !m.invalidAt && m.source !== 'event' && m.source !== 'diary')
-    const out = items.filter((m) => m.about && ppl.has(String(m.about))).sort((a, b) => b.at - a.at).slice(0, 10)
-    for (const h of search(index(), String(transcript).slice(-1500), { limit: 8, minScore: 0.5 })) {
-      if (out.length >= 15) break
+    const out = items.filter((m) => m.about && ppl.has(String(m.about))).sort((a, b) => b.at - a.at).slice(0, 20)
+    for (const h of search(index(), String(transcript).slice(-1500), { limit: 10, minScore: 0.5 })) {
+      if (out.length >= 30) break
       if (!out.some((m) => m.id === h.it.id) && h.it.source !== 'event' && h.it.source !== 'diary') out.push(h.it)
     }
     return out
@@ -803,23 +955,27 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const known = new Map(related.map((m) => [m.id, m]))
     const out = await askModel(dsh, {
       cfg,
-      system: `你帮一个叫「哈洛」的聊天角色整理长期记忆。${source}，说话人后面括号里是 QQ 号。挑出以后值得记住的事实：别人的名字/称呼、喜好、讨厌的东西、身份、近况和重要经历、约定、你们之间的关系变化。不要记寒暄、日常琐事、一次性的问答；不要记哈洛自己的人设和喜好（她本来就知道），只记关于别人、以及你们之间的事。每条一句话，主语写清楚是谁。QQ 号是 ${cfg.ownerQQ} 的人是她的${cfg.ownerName || '主人'}。` +
+      system: `你帮一个叫「哈洛」的聊天角色整理长期记忆。${source}，说话人后面括号里是 QQ 号。挑出以后值得记住的事实：别人的名字/称呼、喜好、讨厌的东西、身份、近况和重要经历、约定、你们之间的关系变化。不要记寒暄、日常琐事、一次性的问答；不要记哈洛自己的人设和喜好（她本来就知道），只记关于别人、以及你们之间的事。每条一句话，主语写清楚是谁。只写能从对话里核实的事，别写你的推测、感受和评价；同一个意思不要拆成好几条写；「已经记得的事」里已经有、没有新信息的，不要换个说法再写一遍。QQ 号是 ${cfg.ownerQQ} 的人是她的${cfg.ownerName || '主人'}。` +
         (related.length ? '\n每条新事实先和「已经记得的事」比一比：全新的写 "op":"add"；是对某条旧记忆的补充或更准确的说法，写 "op":"update"、"id" 填那条的编号、"text" 写合并后的完整说法；和某条旧记忆矛盾、说明那条已经过时（比如以前喜欢现在不喜欢了、换了工作、搬家了、分手了），写 "op":"outdated"、"id" 填旧的编号、"text" 写现在的新事实。拿不准是不是矛盾就当 add；已经记得、没有新信息的不要输出。' : '') +
-        `只输出 JSON 数组，例如 [{"op":"add","text":"小明喜欢吃辣","about":"小明","about_qq":"12345","importance":0.6}]（about_qq 写这件事是关于谁的 QQ 号，不知道就不写），没有值得记的就输出 []。`,
-      text: (related.length ? `已经记得的事：\n${related.map((m) => `#${m.id} [${whenText(m.at)}] ${m.aboutName ? '[' + m.aboutName + '] ' : ''}${m.text}`).join('\n')}\n\n` : '') + transcript,
+        `每条再带三个字段：kind 是类型，只能是 fact（客观事实）/preference（喜欢讨厌、口味习惯）/plan（约定、打算）/event（发生过的经历）/relation（关系、称呼）；when 是这件事「什么时候开始」的显式说法（昨天、上周、三个月前、去年…），没有就不写；confidence 是你对这条的把握，0~1。` +
+        `只输出 JSON 数组，例如 [{"op":"add","text":"小明喜欢吃辣","about":"小明","about_qq":"12345","importance":0.6,"kind":"preference","when":"上个月","confidence":0.8}]（about_qq 写这件事是关于谁的 QQ 号，不知道就不写），没有值得记的就输出 []；整段都没营养时输出 [{"op":"drop"}]。`,
+      text: (related.length ? `已经记得的事：\n${related.map((m) => `#${m.id} [${whenText(m.at)}]${m.kind ? '[' + (KIND_LABEL[m.kind] || m.kind) + ']' : ''} ${m.aboutName ? '[' + m.aboutName + '] ' : ''}${m.text}${m.validTo && m.validTo < Date.now() ? '（已过时）' : ''}`).join('\n')}\n\n` : '') + transcript,
       maxTokens: 1500,
       temperature: 0.2,
     })
     const m = out.match(/\[[\s\S]*\]/)
     const arr = m ? JSON.parse(m[0]) : []
     let n = 0
-    for (const x of arr.slice(0, 12)) {
+    for (const x of arr.slice(0, 20)) {
       if (!x || !x.text) continue
+      const xKind = KINDS.includes(String(x.kind || '')) ? String(x.kind) : classifyKind(x.text)
+      const xFrom = String(x.when || '').trim() ? parseWhen(String(x.when), Date.now()) : null
       if (/^(我|哈洛)/.test(String(x.about || '')) || String(x.about || '') === '哈洛') continue
       // 关于谁：模型给了 QQ 号就用（群聊、空间里也能记到人头上），私聊默认是对方
       const qq = String(x.about_qq ?? '').replace(/\D/g, '')
       const about = qq.length >= 5 && qq !== String(cfg.botQQ) ? qq : chatId.startsWith('private:') ? chatId.slice(8) : ''
       const op = String(x.op || 'add')
+      if (op === 'drop') continue
       const target = known.get(String(x.id || '').replace(/^#/, ''))
       // 补充旧的（你在面板里亲手写的不改写）
       if (op === 'update' && target && target.source !== 'panel') {
@@ -828,8 +984,8 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
       }
       // 旧的过时了：先标过时（这样新的不会被当成重复合并进去），再记新的
       if (op === 'outdated' && target) {
-        invalidate(target.id)
-        const r = add({ text: x.text, aboutName: x.about || target.aboutName || '', about: about || target.about || '', importance: x.importance ?? target.importance ?? 0.5, source: 'auto', chatId })
+        supersede(target.id)
+        const r = add({ text: x.text, aboutName: x.about || target.aboutName || '', about: about || target.about || '', importance: x.importance ?? target.importance ?? 0.5, source: 'auto', chatId, kind: xKind, validFrom: xFrom || 0, confidence: x.confidence })
         if (r.id || r.updated) {
           invalidate(target.id, r.id || r.updated)
           log.info(`记忆更新：「${target.text}」过时了 → 「${String(x.text).slice(0, 60)}」`)
@@ -837,10 +993,28 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
         }
         continue
       }
-      const r = add({ text: x.text, aboutName: x.about || '', about, importance: x.importance ?? 0.5, source: 'auto', chatId })
+      const r = add({ text: x.text, aboutName: x.about || '', about, importance: x.importance ?? 0.5, source: 'auto', chatId, kind: xKind, validFrom: xFrom || 0, confidence: x.confidence })
       if (r.ok && r.id) n++
     }
     return n
+  }
+
+  /** 一天的印象：把这一天和别人聊的事写成两三句话，以后问「那天」时能想起来。 */
+  async function makeEpisode(day, spoken) {
+    const cfg = getConfig()
+    const s0 = load()
+    if (s0.items.some((m) => m.source === 'episode' && String(m.day || '') === day)) return 0
+    const out = await askModel(dsh, {
+      cfg,
+      system: '你是「哈洛」。下面是你这一天和别人的聊天。用你自己的口吻写两三句话，当作你对这一天的印象：今天和谁聊了些什么、气氛怎么样、有没有值得记住的事。不超过 120 字；不要分点、不要复述原话、不要写日期。只输出这几句话本身。',
+      text: String(spoken).slice(0, 6000),
+      maxTokens: 220,
+      temperature: 0.6,
+    })
+    const t = cleanEpisode(out)
+    if (!t) return 0
+    const r = add({ text: t, importance: 0.7, source: 'episode', day })
+    return r.ok ? 1 : 0
   }
 
   const dayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -859,6 +1033,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     let insights = 0
     let days = 0
     let profiles = 0
+    let episodes = 0
     try {
       for (const day of hub.chatLogDays()) {
         if (day > today || (day === today && !o.includeToday)) continue
@@ -875,6 +1050,15 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
           const r = await extractLines(chatId, lines)
           added += r.added || 0
           insights += r.insights ? 1 : 0
+        }
+        // 一天的印象只在「已经过完的那天」写，今天的留到明天
+        if (byChat.size && day < today) {
+          try {
+            const spoken = [...byChat.values()].flat().map((l) => `${l.who || '某人'}：${l.text || ''}`).join('\n')
+            episodes += await makeEpisode(day, spoken)
+          } catch (error) {
+            log.warn('写一天的印象失败：', error.message)
+          }
         }
         const s = load()
         s.processed = s.processed || {}
@@ -904,10 +1088,10 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
       const before = s.items.length
       s.items = s.items.filter((m) => !shouldForget(m))
       const forgot = before - s.items.length
-      s.lastConsolidate = { day: today, at: Date.now(), added, insights, days, forgot, profiles }
+      s.lastConsolidate = { day: today, at: Date.now(), added, insights, days, forgot, profiles, episodes }
       save(s)
-      log.info(`整理临时记忆：处理了 ${days} 天，新增或更新 ${added} 条长期记忆，更新了 ${insights} 份相处经验、${profiles} 份人物小档案${forgot ? `，忘掉 ${forgot} 条不重要的旧记忆` : ''}`)
-      return { ok: true, added, insights, days, forgot, profiles, message: `整理好了：新增或更新 ${added} 条记忆，更新 ${insights} 份相处经验、${profiles} 份人物小档案${forgot ? `，忘掉 ${forgot} 条旧的` : ''}` }
+      log.info(`整理临时记忆：处理了 ${days} 天，新增或更新 ${added} 条长期记忆，写了 ${episodes} 天的印象，更新了 ${insights} 份相处经验、${profiles} 份人物小档案${forgot ? `，忘掉 ${forgot} 条不重要的旧记忆` : ''}`)
+      return { ok: true, added, insights, days, forgot, profiles, episodes, message: `整理好了：新增或更新 ${added} 条记忆${episodes ? `、${episodes} 天的印象` : ''}，更新 ${insights} 份相处经验、${profiles} 份人物小档案${forgot ? `，忘掉 ${forgot} 条旧的` : ''}` }
     } catch (error) {
       log.warn('整理临时记忆失败：', error.message)
       return { ok: false, message: error.message }
@@ -939,6 +1123,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
 
   /** 每分钟调一次：一天几个整理时间点（默认 04:00 / 16:00），到点且这个点今天还没跑过就整理。 */
   async function tick() {
+    try { flushHits() } catch (error) {}
     const cfg = getConfig().memory
     if (!cfg.enabled || !cfg.dailyConsolidate) {
       const cutoff = dayKey(new Date(Date.now() - 14 * 86400_000))
@@ -974,7 +1159,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
   return {
     recallHint,
     add, addEvent, recentEvents, update, remove, restore, recall, contextFor, consolidate, tick, topicScore, importCandidates, importCommit,
-    searchHistory, archiveChatLog, pruneArchive, historyStats,
+    searchHistory, archiveChatLog, pruneArchive, historyStats, supersede, flushHits,
     profiles: () => { const s = load(); return Object.entries(s.profiles || {}).map(([qq, p]) => ({ qq, ...p })).sort((a, b) => b.at - a.at) },
     setProfile, buildProfile, people,
     recalls: () => recallLog.slice(),

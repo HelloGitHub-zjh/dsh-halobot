@@ -402,5 +402,11 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
     return out
   }
 
-  return { sample, summary, bump, chatTotals, save: () => save(true), dayKey }
+  /** 今天已经问过几次模型（后台小任务，不含聊天那一轮）。调用预算按这个数卡。 */
+  function todayCalls() {
+    sample()
+    return Number(state.today && state.today.calls) || 0
+  }
+
+  return { sample, summary, bump, chatTotals, todayCalls, save: () => save(true), dayKey }
 }

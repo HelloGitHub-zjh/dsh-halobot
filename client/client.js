@@ -1326,6 +1326,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const overrides = draft.group.overrides || {}
       const [newGid, setNewGid] = useState('')
       return h('div', { className: 'ab-grid' },
+        h('div', { className: 'ab-section-title' }, '聊天节奏'),
         h(Card, { title: '连发合并', right: f.sw('merge.enabled'), desc: '人常常一口气发好几句。打开后她会等对方说完再一起回，而不是一句一回。' },
           h(Row, { label: '对方停顿多久算说完' }, f.range('merge.waitSec', 0.5, 10, 0.5, (v) => v + ' 秒')),
           h(Row, { label: '最多等多久', hint: '对方一直在发也最多等这么久' }, f.range('merge.maxSec', 2, 30, 1, (v) => v + ' 秒')),
@@ -1343,6 +1344,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             f.num('reply.oneMax', { min: 12, max: 120 }), h('span', { className: 'ab-muted' }, '字')) : null,
           draft.reply.split === 'natural' ? h(Row, { label: '超过就拆的概率', hint: '默认 100%：超过上面字数就一定拆。调低就有的拆、有的整段发，更像随手打字（不是每条都一个样）' },
             f.percent('reply.chance')) : null,
+          draft.reply.split === 'natural' ? h(Row, { label: '最多几条', hint: '0 = 按场景自动（私聊 3 条、群聊 2 条）；想让她最多只发两条就填 2' },
+            f.num('reply.max', { min: 0, max: 4 }), h('span', { className: 'ab-muted' }, '条')) : null,
         ),
         h(Card, { title: '她问完没人回', right: f.sw('followUp.enabled'), desc: '她问完一句、你一直没接的时候，过一会儿补一句很短的催一下（像真人说的「人呢」「说嘛」）。只在问句后触发，你一回话就停。' },
           h(Row, { label: '等多久补一句', hint: '她问完之后这么多秒还没人回，就补一句；别调太短，不然像催命' }, f.range('followUp.waitSec', 15, 300, 5, (v) => v + ' 秒')),
@@ -1355,16 +1358,9 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         ),
         h(TitleFilter, { draft, setDraft }),
         h(OwnerBrief, { draft, setDraft }),
-        h(Card, { title: '发文件', right: f.sw('files.enabled'), desc: '打开后，你在私聊里可以让她把本机文件当文件发到 QQ，也能按你说的发给白名单里的人或群。她只能发 QQ 工作区和下面目录里的文件；单个文件有大小上限；发过什么会记在日志里。' },
-          h(Row, { label: '单个文件最大' }, f.num('files.maxMB', { min: 1, max: 2048 }), h('span', { className: 'ab-muted' }, ' MB')),
-          h(Row, { label: '额外允许的目录', hint: '一行一个完整路径。QQ 工作区里的文件一直允许，不用写；留空 = 只能发工作区里的' }, f.list('files.dirs', { placeholder: 'D:\\Halobot\\要发的文件' })),
-        ),
-                h(Card, { title: '危险命令确认', right: f.sw('security.dangerConfirm'), desc: '打开后，她在私聊里要执行终端危险命令（删根目录、格式化、关机、下载后直接执行等）之前，会先发 QQ 私聊问你；你回复「确认」才执行，回复「取消」或 60 秒没回就拦下。默认关。只拦真正致命的命令，普通删除/构建/改文件不受影响。' }),
-h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复她的消息、或者提到下面这些名字时，她一定会回。' },
+        h('div', { className: 'ab-section-title' }, '群聊策略'),
+        h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复她的消息、或者提到下面这些名字时，她一定会回。' },
           h(Row, { label: '唤醒词', hint: '一行一个' }, f.list('group.wakeWords', { placeholder: '哈洛\n洛洛\nHalo' })),
-        ),
-        h(Card, { title: '安全刹车', desc: '只防失控（比如和别的机器人聊停不下来）：她在一个群里短时间说太多就歇一会儿，主人 @ 她除外。平时碰不到。' },
-          h(Row, { label: '最多说几次' }, f.range('group.burstMax', 1, 20, 1, (v) => v + ' 次'), h('span', { className: 'ab-muted' }, '/'), f.range('group.burstWindowSec', 30, 600, 30, (v) => Math.round(v / 6) / 10 + ' 分钟')),
         ),
         h(Card, { title: '群里插话', desc: '没人叫她的时候，她也可能自然地插一句；她看完群里在聊什么，也可以决定不说话。' },
           h(Row, { label: '插话概率', hint: '每条普通消息触发插话的机会' }, f.percent('group.interjectChance')),
@@ -1389,6 +1385,15 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h('div', { className: 'ab-flex' }, h('input', { className: 'ab-input', placeholder: '群号', value: newGid, onChange: (e) => setNewGid(e.target.value.replace(/\D/g, '')) }),
             h(Btn, { small: true, disabled: !newGid, onClick: () => { setDraft(setPath(draft, 'group.overrides', { ...overrides, [newGid]: { interjectChance: draft.group.interjectChance } })); setNewGid('') } }, '添加')),
         ),
+        h(Card, { title: '安全刹车', desc: '只防失控（比如和别的机器人聊停不下来）：她在一个群里短时间说太多就歇一会儿，主人 @ 她除外。平时碰不到。' },
+          h(Row, { label: '最多说几次' }, f.range('group.burstMax', 1, 20, 1, (v) => v + ' 次'), h('span', { className: 'ab-muted' }, '/'), f.range('group.burstWindowSec', 30, 600, 30, (v) => Math.round(v / 6) / 10 + ' 分钟')),
+        ),
+        h('div', { className: 'ab-section-title' }, '文件与安全'),
+        h(Card, { title: '发文件', right: f.sw('files.enabled'), desc: '打开后，你在私聊里可以让她把本机文件当文件发到 QQ，也能按你说的发给白名单里的人或群。她只能发 QQ 工作区和下面目录里的文件；单个文件有大小上限；发过什么会记在日志里。' },
+          h(Row, { label: '单个文件最大' }, f.num('files.maxMB', { min: 1, max: 2048 }), h('span', { className: 'ab-muted' }, ' MB')),
+          h(Row, { label: '额外允许的目录', hint: '一行一个完整路径。QQ 工作区里的文件一直允许，不用写；留空 = 只能发工作区里的' }, f.list('files.dirs', { placeholder: 'D:\\Halobot\\要发的文件' })),
+        ),
+                h(Card, { title: '危险命令确认', right: f.sw('security.dangerConfirm'), desc: '打开后，她在私聊里要执行终端危险命令（删根目录、格式化、关机、下载后直接执行等）之前，会先发 QQ 私聊问你；你回复「确认」才执行，回复「取消」或 60 秒没回就拦下。默认关。只拦真正致命的命令，普通删除/构建/改文件不受影响。' }),
       )
     }
 
@@ -1478,15 +1483,26 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               h('td', { style: { textAlign: 'right' } }, h(Btn, { small: true, kind: 'ghost', onClick: () => test(m) }, '测速'), h(Btn, { small: true, kind: 'ghost', onClick: () => { setDraft(setPath(setPath(draft, 'model.provider', m.provider), 'model.model', m.model)); toast('选好了，记得保存') } }, '用这个'))))))),
         ),
         h(Card, { title: 'Token 单价（算花费）', desc: 'DSH 本身没有价目表，概览卡里的「估算花费」要在这里填了单价才会算。按模型官网的「元 / 百万 token」填；留 0 就只显示 token、不显示钱。' },
-          h('div', { className: 'ab-small', style: { margin: '12px 0 2px', fontWeight: 600 } }, '高峰时段（周一至周五 9:00–12:00、14:00–18:00，北京时间）'),
-          h(Row, { label: '输入（没命中缓存）', hint: '通常是最贵的一档' }, f.num('usage.prices.peak.miss', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
-          h(Row, { label: '输入（命中缓存）', hint: '命中缓存的输入单价，一般便宜一个数量级' }, f.num('usage.prices.peak.hit', { min: 0, step: 0.001 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
-          h(Row, { label: '输出' }, f.num('usage.prices.peak.out', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
-          h('div', { className: 'ab-small', style: { margin: '16px 0 2px', fontWeight: 600 } }, '空闲时段（其余时间，含周末与法定节假日全天）'),
-          h(Row, { label: '输入（没命中缓存）' }, f.num('usage.prices.idle.miss', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
-          h(Row, { label: '输入（命中缓存）' }, f.num('usage.prices.idle.hit', { min: 0, step: 0.001 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
-          h(Row, { label: '输出' }, f.num('usage.prices.idle.out', { min: 0, step: 0.01 }), h('span', { className: 'ab-muted' }, ' 元 / 百万 token')),
-          h('div', { className: 'ab-muted ab-small' }, '默认值就是 DeepSeek 官方价目（高峰 2 / 0.04 / 8，空闲 1 / 0.02 / 4），按官网调整即可。填好保存后，概览卡按采样那一刻的时段分别计价；周末和法定节假日全天按空闲算，官方调休补班的周末也默认按空闲算（想按高峰算可在配置 usage.workdays 里补日期）。'),
+          h('div', { className: 'ab-flex', style: { alignItems: 'flex-start', gap: 18, flexWrap: 'wrap', marginTop: 12 } },
+            h('div', { style: { flex: '1 1 280px', minWidth: 0 } },
+              h('div', { className: 'ab-small', style: { fontWeight: 600 } }, '高峰时段'),
+              h('div', { className: 'ab-small ab-muted', style: { marginBottom: 6 } }, '工作日 9:00–12:00、14:00–18:00'),
+              h(Row, { label: '输入·未命中', hint: '通常是最贵的一档' }, f.num('usage.prices.peak.miss', { min: 0, step: 0.01 })),
+              h(Row, { label: '输入·命中', hint: '命中缓存的输入，一般便宜一个数量级' }, f.num('usage.prices.peak.hit', { min: 0, step: 0.001 })),
+              h(Row, { label: '输出' }, f.num('usage.prices.peak.out', { min: 0, step: 0.01 }))),
+            h('div', { style: { flex: '1 1 280px', minWidth: 0 } },
+              h('div', { className: 'ab-small', style: { fontWeight: 600 } }, '空闲时段'),
+              h('div', { className: 'ab-small ab-muted', style: { marginBottom: 6 } }, '其余时间，含周末与法定节假日全天'),
+              h(Row, { label: '输入·未命中' }, f.num('usage.prices.idle.miss', { min: 0, step: 0.01 })),
+              h(Row, { label: '输入·命中' }, f.num('usage.prices.idle.hit', { min: 0, step: 0.001 })),
+              h(Row, { label: '输出' }, f.num('usage.prices.idle.out', { min: 0, step: 0.01 })))),
+          h('div', { className: 'ab-small ab-muted', style: { marginTop: 4 } }, '单位：元 / 百万 token。'),
+          h('div', { className: 'ab-small', style: { margin: '16px 0 2px', fontWeight: 600 } }, '哪些日子算节假日 / 调休补班'),
+          h(Row, { label: '法定节假日', hint: '逗号分隔的日期（2026-01-01），这些天全天按空闲计价；内置了 2026 年的法定节假日，要补 2027 年就往这里加' },
+            h('input', { className: 'ab-input', style: { flex: '1 1 320px' }, placeholder: '2026-01-01, 2026-01-02', value: ((draft.usage && draft.usage.holidays) || []).join(', '), onChange: (e) => setDraft(setPath(draft, 'usage.holidays', e.target.value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean))) })),
+          h(Row, { label: '调休补班', hint: '周末但按高峰计价的日子（比如国庆前后补班）；不填就按空闲算' },
+            h('input', { className: 'ab-input', style: { flex: '1 1 320px' }, placeholder: '2026-10-10', value: ((draft.usage && draft.usage.workdays) || []).join(', '), onChange: (e) => setDraft(setPath(draft, 'usage.workdays', e.target.value.split(/[,，\s]+/).map((x) => x.trim()).filter(Boolean))) })),
+          h('div', { className: 'ab-muted ab-small', style: { marginTop: 10 } }, '默认值就是 DeepSeek 官方价目（高峰 2 / 0.04 / 8，空闲 1 / 0.02 / 4），按官网调整即可。填好保存后，概览卡按采样那一刻的时段分别计价。'),
         ),
       )
     }
@@ -1917,7 +1933,8 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       )
     }
 
-    const SOURCE = { tool: '她自己记的', auto: '每日整理', diary: '空间日记', panel: '你加的', event: '她的经历', import: '导入的' }
+    const SOURCE = { tool: '她自己记的', auto: '每日整理', diary: '空间日记', panel: '你加的', event: '她的经历', episode: '一天', import: '导入的' }
+    const KIND_LABEL = { fact: '事实', preference: '偏好', plan: '计划', event: '经历', relation: '关系' }
     /** 心情页：她此刻的心情、怎么衰减、被什么影响。 */
     function MoodPage({ st, draft, setDraft, toast }) {
       const f = useField(draft, setDraft)
@@ -1970,7 +1987,9 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const [stats, setStats] = useState(null)
       const [q, setQ] = useState('')
       const [ins, setIns] = useState(null)
-      const [adding, setAdding] = useState({ text: '', aboutName: '', importance: 0.6 })
+      const [adding, setAdding] = useState({ text: '', aboutName: '', importance: 0.6, kind: '' })
+      const [kindFilter, setKindFilter] = useState('')
+      const [showExpired, setShowExpired] = useState(false)
       const load = (query) => get('/memories?q=' + encodeURIComponent(query ?? q)).then((r) => { setMem(r.items || []); setStats(r.stats || null) })
       const [styles, setStyles] = useState({})
       const loadIns = () => get('/insights').then((r) => { setIns(r.items || []); setStyles(r.styles || {}) })
@@ -1982,13 +2001,88 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       useEffect(() => { if (memOn) { load(''); loadIns() } }, [memOn])
       useEffect(() => { if (!memOn) return; const t = setTimeout(() => load(q), 250); return () => clearTimeout(t) }, [q])
       const pgi = usePager(ins || [])
-      const pgm = usePager(mem || [])
+      const shownMem = (mem || []).filter((m) => (!kindFilter || (m.kind || 'fact') === kindFilter) && (showExpired || !m.invalidAt))
+      const pgm = usePager(shownMem)
       const last = st.memory && st.memory.lastConsolidate
+      const dayCalls = (st.usage && Number(st.usage.calls)) || 0
+      const perDay = Number(draft.background && draft.background.perDay) || 0
+      const suggest = Math.max(2, times.length + 3)
+      const metric = (n, l) => h('div', { className: 'ab-metric', key: l },
+        h('div', { className: 'n' }, n), h('div', { className: 'l' }, l))
       if (!memOn) return h('div', { className: 'ab-grid' }, h(ModOff, { name: '记忆' }))
       return h('div', { className: 'ab-grid' },
+        // ① 一眼看明白：她现在记得多少、上次整理、今天后台花了多少
+        h('div', { className: 'ab-metrics' },
+          metric(stats ? stats.count : '–', '条长期记忆'),
+          metric(stats ? stats.auto : '–', '条是整理出来的'),
+          metric(last ? new Date(last.at).toLocaleDateString() : '还没整理过', '上次整理'),
+          metric(perDay > 0 ? dayCalls + ' / ' + perDay : dayCalls + ' / 不限', '今天后台调用')),
+
+        // ② 记忆本身：看得到、找得到、加得进
+        h(Card, { title: '记忆库', right: f.sw('memory.enabled'), desc: '她脑子里存着的所有事：自己记的、每天从聊天里整理出来的、写过的空间日记、你手动加的。每轮回复前，她会从里面挑最相关的几条当背景（挑几条在下面「每轮想起几条」里调）。' },
+          h(Row, { label: '找一条', hint: '按关键词搜，中文按两个字一组切，写具体点更容易命中' },
+            h('input', { className: 'ab-input', style: { flex: '1 1 320px' }, placeholder: '例如：白米饭、游戏、约定…', value: q, onChange: (e) => setQ(e.target.value) })),
+          h(Row, { label: '手动加一条', hint: '写清楚、写具体，她会当成事实记住；同一个人的同一件事不会重复存' },
+            h('div', { className: 'ab-flex', style: { flex: '1 1 420px' } },
+              h('input', { className: 'ab-input', style: { flex: '2 1 220px' }, placeholder: '例如：主人不吃香菜', value: adding.text, onChange: (e) => setAdding({ ...adding, text: e.target.value }) }),
+              h('input', { className: 'ab-input', style: { flex: '1 1 110px' }, placeholder: '关于谁（可选）', value: adding.aboutName, onChange: (e) => setAdding({ ...adding, aboutName: e.target.value }) }),
+              h(Select, { value: adding.kind, width: 96, onChange: (v) => setAdding({ ...adding, kind: v }), options: [{ value: '', label: '自动判断' }, ...Object.entries(KIND_LABEL).map(([value, label]) => ({ value, label }))] }),
+              h(Select, { value: adding.importance, width: 118, onChange: (v) => setAdding({ ...adding, importance: v }), options: [{ value: 0.3, label: '随口一提' }, { value: 0.6, label: '比较重要' }, { value: 0.9, label: '非常重要' }] }),
+              h(Btn, { small: true, kind: 'primary', disabled: !adding.text.trim(), onClick: async () => { const r = await post('/memory/add', adding); toast(r.ok ? '记住了' : r.message); setAdding({ text: '', aboutName: '', importance: 0.6, kind: '' }); load() } }, '记住'))),
+          h(Row, { label: '只看某类', hint: '类型是每天整理时判的：事实、偏好、计划、经历、关系；筛完还能在表里改内容' },
+            h('div', { className: 'ab-flex', style: { flexWrap: 'wrap' } },
+              [{ v: '', l: '全部' }, ...Object.entries(KIND_LABEL).map(([v, l]) => ({ v, l }))].map((o) => h('button', {
+                key: o.v || 'all', type: 'button',
+                className: 'ab-btn sm' + (kindFilter === o.v ? ' primary' : ' ghost'),
+                onClick: () => setKindFilter(o.v),
+              }, o.l)),
+              h('label', { className: 'ab-flex ab-small ab-muted', style: { gap: 4, marginLeft: 6 } },
+                h('input', { type: 'checkbox', checked: showExpired, onChange: (e) => setShowExpired(e.target.checked) }),
+                '连同已失效的一起看'))),
+          h('div', { className: 'ab-section-title' }, q ? '搜索结果' : '全部记忆'),
+          mem === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : mem.length === 0 ? h(Empty, { icon: '🫧', text: q ? '没找到相关的记忆' : '还没有记住什么。聊几天，她会自己整理出来的。' }) :
+            h('div', null,
+              h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'ab-table' },
+                  h('thead', null, h('tr', null, ['时间', '类型', '来源', '内容', ''].map((x, i) => h('th', { key: i }, x)))),
+                  h('tbody', null, pgm.rows.map((m) => h(MemoryRow, { key: m.id, m, onChanged: () => load(), toast }))))),
+              h(Pager, { page: pgm.page, total: pgm.total, setPage: pgm.setPage, count: pgm.count }))),
+
+        // ③ 写入：什么时候整理、每天最多花几次模型调用
+        h('div', { className: 'ab-section-title' }, '她怎么记'),
+        h(Card, { title: '每天自动整理', desc: '把聊天流水提炼成三样东西：长期记忆、相处经验、说话方式。只处理上次整理之后的新聊天，整理完的流水会挪进归档（留 60 天，需要时还能翻原文）；各会话自己的上下文不受影响。' },
+          h(Row, { label: '每天整理 ' + times.length + ' 次', hint: '关掉之后只留原文，不再自动提炼；可以手动点右边的按钮补一次' },
+            f.sw('memory.dailyConsolidate'), h('span', { className: 'ab-muted' }, '每天'),
+            times.map((t, i) => h('span', { key: i, className: 'ab-flex', style: { gap: 4, alignItems: 'center' } },
+              i ? h('span', { className: 'ab-muted' }, '和') : null,
+              h('input', { className: 'ab-input sm', type: 'time', value: t, onChange: (e) => setTime(i, e.target.value) }),
+              times.length > 1 ? h('button', { type: 'button', className: 'ab-btn sm ghost', title: '去掉这个时间点', onClick: () => delTime(i) }, '×') : null)),
+            times.length < 4 ? h(Btn, { small: true, kind: 'ghost', onClick: addTime }, '＋ 加一次') : null),
+          h(Row, { label: '现在补一次', hint: '不用等时间点，立刻把新聊天整理一遍' },
+            h(Btn, { small: true, onClick: async () => { toast('正在整理，可能要一两分钟…'); const r = await post('/memory/extract', {}); toast(r.message); load(); loadIns() } }, '立即整理'))),
+        h(Card, { title: '后台调用', desc: '整理、写日记、刷 B 站、给表情起名、判断心情都要问模型，这些都不在聊天那一轮里。这里给每天设一个上限，超了就顺延到明天——聊天永远不会被后台任务挤掉。' },
+          h('div', { className: 'ab-kv' },
+            h('div', null, h('span', null, '今天已经问了'), h('b', null, dayCalls + ' 次')),
+            h('div', null, h('span', null, '每天最多'), h('b', null, perDay > 0 ? perDay + ' 次' : '不限')),
+            h('div', null, h('span', null, '按现在的设置建议至少'), h('b', null, suggest + ' 次'))),
+          h(Row, { label: '每天最多几次', hint: '0 = 不限。整理 ' + times.length + ' 次至少用 ' + times.length + ' 次调用，再留 3 次给日记、B 站和表情起名；改完立即生效' },
+            f.num('background.perDay', { min: 0, max: 200 }))),
+
+        // ④ 读取：每轮怎么翻记忆
+        h('div', { className: 'ab-section-title' }, '她怎么想起来'),
+        h(Card, { title: '每轮想起几条', desc: '回复之前，她会用对方这句话（太短就带上上一句）去翻记忆，把最相关的几条塞进上下文。这一层只在本地检索，不花模型调用。' },
+          h(Row, { label: '条数', hint: '命中的多就多给两条，寒暄就少给，不硬塞' },
+            h('span', { className: 'ab-muted' }, '最少'), f.num('memory.recallMin', { min: 1, max: 10 }),
+            h('span', { className: 'ab-muted' }, '最多'), f.num('memory.recallMax', { min: 1, max: 20 })),
+          h(Row, { label: '最多占多少字', hint: '这几条拼起来的总字数上限，超了按分数从低往高截' }, f.num('memory.recallMaxChars', { min: 100, max: 2000 })),
+          h(Row, { label: '按「上次 / 那天」加权', hint: '问句里带时间词（昨天、上个月、三天前…）时，那个时间段的记忆更容易被想起；只加分，不会把别的排除掉' }, f.sw('memory.timeBoost')),
+          h(Row, { label: '只说还有效的', hint: '开着：被新事实取代的旧说法不再塞给她；关着：新旧都参与，可能把过时的说法当成现在的事' }, f.sw('memory.strictValid'))),
+
+        // ⑤ 沉淀：从聊天里长出来的东西
+        h('div', { className: 'ab-section-title' }, '她沉淀下来的'),
         h(PeopleWall, { toast }),
         h(ProfilesCard, { toast }),
-        h(Card, { title: '相处经验', desc: '她对每个人（和每个群）总结出来的相处之道：概括的、不琐碎的，比如「他累的时候不想多聊」。每次整理记忆时她会回顾一次，越来越懂你。聊天时只带上对当前这个人的那份。' },
+        h(Card, { title: '相处经验', desc: '她对每个人（和每个群）总结出来的相处之道：概括的、不琐碎的，比如「他累的时候不想多聊」。每次整理记忆时回顾一次，越来越懂你；聊天时只带上对当前这个人的那份。' },
           ins === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : ins.length === 0 ? h(Empty, { icon: '🌱', text: '还没有总结出经验。多聊几天，整理记忆时她会慢慢总结。' }) :
             h('div', null,
               h('div', { style: { overflowX: 'auto' } },
@@ -1996,38 +2090,12 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
                   h('thead', null, h('tr', null, ['谁', '条数', '相处经验', ''].map((x) => h('th', { key: x }, x)))),
                   h('tbody', null, pgi.rows.map((p) => h(InsightCard, { key: p.key, p, toast, onSaved: loadIns, style: styles[p.key] || [] }))))),
               h(Pager, { page: pgi.page, total: pgi.total, setPage: pgi.setPage, count: pgi.count }))),
-        h(Card, { title: '说话方式', desc: '聊久了潜移默化学到的：每个人的说话习惯（她会自然地贴近一点），和她自己慢慢养成的说法。不会变成另一个人，只是越来越像「你们的」哈洛。' },
+        h(Card, { title: '说话方式', desc: '聊久了潜移默化学到的：每个人的说话习惯（她会自然贴近一点），和她自己慢慢养成的说法。不会变成另一个人，只是越来越像「你们的」哈洛。' },
           h(StyleEditor, { k: 'self', label: '她自己养成的说法', list: styles.self || [], toast, onSaved: loadIns }),
           Object.keys(styles).filter((k) => k !== 'self').length === 0 ? h('div', { className: 'ab-muted ab-small' }, '还没学到别人的说话习惯。整理记忆时会跟着相处经验一起总结（显示在上面每个人的相处经验下面）。') : null),
-        h(Card, { title: '记忆库', right: f.sw('memory.enabled'), desc: '长期记忆：她聊天时自己记的、每天从聊天里整理出来的、写过的空间日记、你手动加的。每一轮回复前，她会按对方正在说的话翻出最相关的几条。' },
-          h('div', { className: 'ab-grid ab-g4', style: { marginBottom: 12 } },
-            h('div', { className: 'ab-card ab-stat' }, h('div', { className: 'n' }, stats ? stats.count : '–'), h('div', { className: 'l' }, '条长期记忆')),
-            h('div', { className: 'ab-card ab-stat' }, h('div', { className: 'n' }, stats ? stats.auto : '–'), h('div', { className: 'l' }, '条来自每日整理' + (stats && stats.outdated ? '（另有 ' + stats.outdated + ' 条已过时）' : ''))),
-            h('div', { className: 'ab-card ab-stat' }, h('div', { className: 'n', style: { fontSize: 16, paddingTop: 6 } }, last ? new Date(last.at).toLocaleString() : '还没整理过'), h('div', { className: 'l' }, '上次整理'))),
-          h(Row, { label: '每天自动整理 ' + times.length + ' 次', hint: '把临时记忆（聊天流水）提炼成长期记忆、相处经验和说话方式；每次只处理上次整理之后的新聊天，整理完的流水会挪进归档（保留 60 天，她还能翻）；各会话自己的上下文不受影响。最多 4 个时间点' },
-            f.sw('memory.dailyConsolidate'), h('span', { className: 'ab-muted' }, '每天'),
-            times.map((t, i) => h('span', { key: i, className: 'ab-flex', style: { gap: 4, alignItems: 'center' } },
-              i ? h('span', { className: 'ab-muted' }, '和') : null,
-              h('input', { className: 'ab-input sm', type: 'time', value: t, onChange: (e) => setTime(i, e.target.value) }),
-              times.length > 1 ? h('button', { type: 'button', className: 'ab-btn sm ghost', title: '去掉这个时间点', onClick: () => delTime(i) }, '×') : null)),
-            times.length < 4 ? h(Btn, { small: true, kind: 'ghost', onClick: addTime }, '＋ 加一次') : null,
-            h(Btn, { small: true, onClick: async () => { toast('正在整理，可能要一两分钟…'); const r = await post('/memory/extract', {}); toast(r.message); load(); loadIns() } }, '现在整理一次')),
-          h(Row, { label: '每轮最多想起几条' }, f.range('memory.recallCount', 0, 12, 1, (v) => v + ' 条')),
-          h('div', { className: 'ab-section-title' }, '手动加一条'),
-          h('div', { className: 'ab-flex' },
-            h('input', { className: 'ab-input', style: { flex: '2 1 260px' }, placeholder: '要她记住的事，例如：主人不吃香菜', value: adding.text, onChange: (e) => setAdding({ ...adding, text: e.target.value }) }),
-            h('input', { className: 'ab-input', style: { flex: '1 1 120px' }, placeholder: '关于谁（可选）', value: adding.aboutName, onChange: (e) => setAdding({ ...adding, aboutName: e.target.value }) }),
-            h(Select, { value: adding.importance, width: 120, onChange: (v) => setAdding({ ...adding, importance: v }), options: [{ value: 0.3, label: '随口一提' }, { value: 0.6, label: '比较重要' }, { value: 0.9, label: '非常重要' }] }),
-            h(Btn, { small: true, kind: 'primary', disabled: !adding.text.trim(), onClick: async () => { const r = await post('/memory/add', adding); toast(r.ok ? '记住了' : r.message); setAdding({ text: '', aboutName: '', importance: 0.6 }); load() } }, '记住')),
-          h('div', { className: 'ab-section-title' }, '翻一翻'),
-          h('input', { className: 'ab-input wide', placeholder: '搜索记忆，例如：白米饭、游戏、约定…', value: q, onChange: (e) => setQ(e.target.value) }),
-          mem === null ? h(Empty, { icon: '⏳', text: '加载中…' }) : mem.length === 0 ? h(Empty, { icon: '🫧', text: q ? '没找到相关的记忆' : '还没有记住什么。' }) :
-            h('div', { style: { marginTop: 8 } },
-              h('div', { style: { overflowX: 'auto' } },
-                h('table', { className: 'ab-table' },
-                  h('thead', null, h('tr', null, ['时间', '来源', '内容', ''].map((x) => h('th', { key: x }, x)))),
-                  h('tbody', null, pgm.rows.map((m) => h(MemoryRow, { key: m.id, m, onChanged: () => load(), toast }))))),
-              h(Pager, { page: pgm.page, total: pgm.total, setPage: pgm.setPage, count: pgm.count }))),
+
+        // ⑥ 维护：看最近想起什么、导入旧记忆
+        h('div', { className: 'ab-section-title' }, '维护'),
         h(RecallLog, null),
         h(MemoryImport, { toast, onDone: () => load() }),
       )
@@ -2222,14 +2290,20 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
     }
 
     function MemoryRow({ m, onChanged, toast }) {
+      const fmtDay = (t) => (t ? new Date(t).toLocaleDateString() : '')
+      const span = m.validTo
+        ? (m.validFrom ? fmtDay(m.validFrom) + ' 到 ' + fmtDay(m.validTo) : '到 ' + fmtDay(m.validTo))
+        : (m.validFrom && Math.abs(m.validFrom - (m.at || 0)) > 6 * 3600e3 ? '从 ' + fmtDay(m.validFrom) + ' 起' : '')
       const [edit, setEdit] = useState(false)
       const [text, setText] = useState(m.text)
       if (m.invalidAt) {
         return h('tr', { style: { opacity: 0.62 } },
           h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(m.invalidAt)),
+          h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, KIND_LABEL[m.kind] || '事实')),
           h('td', { className: 'ab-small' }, h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, '已过时')),
           h('td', null,
             h('s', null, (m.aboutName ? '[' + m.aboutName + '] ' : '') + m.text),
+            span ? h('div', { className: 'ab-muted ab-small' }, '有效：' + span) : null,
             m.supersededText ? h('div', { className: 'ab-muted ab-small' }, '→ 现在是：' + m.supersededText) : null),
           h('td', { style: { whiteSpace: 'nowrap' } },
             h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/restore', { id: m.id }); toast('恢复了', 'ok'); onChanged() } }, '恢复'),
@@ -2237,13 +2311,15 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       }
       return h('tr', null,
         h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(m.at)),
+        h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, KIND_LABEL[m.kind] || '事实')),
         h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, h('span', { className: 'ab-pill', style: { padding: '0 6px', fontSize: 11 } }, SOURCE[m.source] || '记忆')),
         h('td', null, edit
           ? h('input', { className: 'ab-input', style: { width: '100%' }, value: text, onChange: (e) => setText(e.target.value), onKeyDown: async (e) => { if (e.key === 'Enter') { await post('/memory/update', { id: m.id, text }); setEdit(false); toast('改好了', 'ok'); onChanged() } if (e.key === 'Escape') setEdit(false) } })
           : h(Fragment, null,
             m.aboutName ? h('b', null, '[' + m.aboutName + '] ') : null,
             h(Clip, { text: m.text, n: 70, max: 620 }),
-            m.importance >= 0.8 ? h('span', { title: '很重要' }, ' ★') : null)),
+            m.importance >= 0.8 ? h('span', { title: '很重要' }, ' ★') : null,
+            span ? h('div', { className: 'ab-muted ab-small' }, '有效：' + span) : null)),
         h('td', { style: { whiteSpace: 'nowrap' } },
           h(Btn, { small: true, kind: 'ghost', onClick: () => setEdit(!edit) }, edit ? '取消' : '改'),
           h(Btn, { small: true, kind: 'ghost', onClick: async () => { await post('/memory/delete', { id: m.id }); onChanged() } }, '忘掉')))
@@ -2393,6 +2469,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Row, { label: '语音条最长', hint: '歌比这个长就截一段' }, f.range('song.maxVoiceSec', 30, 300, 10, (v) => v + ' 秒')),
           h(Row, { label: '截哪一段' }, f.choices('song.clipStart', [{ value: 'auto', label: '副歌附近', desc: '从全曲大约 30% 的地方开始' }, { value: 'head', label: '从头开始' }])),
           h(Row, { label: '人声音量' }, f.range('song.vocalVolume', 0.2, 2, 0.05, (v) => Math.round(v * 100) + '%')),
+          h(Row, { label: '保留中间文件', hint: '开着：分离出的人声、换完声的干声都留在数据目录，想自己再混可以拿去用；占空间，默认关' }, f.sw('song.keepWork')),
           h(Row, { label: '伴奏音量' }, f.range('song.instVolume', 0.1, 2, 0.05, (v) => Math.round(v * 100) + '%')),
           h(Row, { label: '只有主人能点歌' }, f.sw('song.ownerOnly')),
         ),
@@ -2682,6 +2759,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             h(Btn, { small: true, onClick: async () => { const r = await get('/bili/account'); setS({ ...(s || {}), account: r }) } }, '检查登录'),
             acct ? h('span', { className: 'ab-small', style: { color: acct.isLogin ? 'var(--ab-ok)' : 'var(--ab-warn)' } }, acct.isLogin ? '已登录：' + acct.uname : '没登录（只能看，不能评论）') : null),
         ),
+        h('div', { className: 'ab-section-title' }, '刷什么'),
         h(Card, { title: '怎么刷', desc: '只在「主动搭话」里设的醒着时间内刷。' },
           h(Row, { label: '定时自己去刷' }, f.sw('bili.autoBrowse')),
           h(Row, { label: '多久刷一轮' }, f.range('bili.intervalHours', 1, 24, 1, (v) => v + ' 小时')),
@@ -2692,6 +2770,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Row, { label: '播放量门槛' }, f.num('bili.minViews', { min: 0 }), h('span', { className: 'ab-muted' }, '次以上')),
           h(Row, { label: '只看最近' }, f.num('bili.maxAgeDays', { min: 0 }), h('span', { className: 'ab-muted' }, '天内发的（0 = 不限）')),
         ),
+        h('div', { className: 'ab-section-title' }, '看什么'),
         h(Card, { title: '看画面（抽帧 + 视觉）', desc: '默认只读标题、简介、字幕和热评。打开后用 ffmpeg 抽帧交给视觉模型，截图保存到本机，可以在 QQ 聊天里让她挑一张发送。没有 ffmpeg、模型明确不支持图片或处理失败时，自动继续文字阅读。' },
           h(Row, { label: '让她看画面', hint: '需要视觉模型 + ffmpeg；关掉就退回只看文字' }, f.sw('bili.vision')),
           h(Row, { label: '每个视频抽几帧' }, f.range('bili.visionFrames', 2, 12, 1, (v) => v + ' 帧')),
@@ -2705,6 +2784,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           !shots ? h(Empty, { icon: '⏳', text: '加载中…' }) : shots.length === 0 ? h(Empty, { icon: '🎬', text: '还没有截图。打开上面的「让她看画面」刷一轮 B 站，就会开始截。' }) :
             h('div', { className: 'ab-shots' }, shots.map((it) => h(ShotCell, { key: it.file, it, onChanged: () => { loadShots(); load() }, toast }))),
         ),
+        h('div', { className: 'ab-section-title' }, '怎么互动'),
         h(Card, { title: '评论、回复和分享', desc: '评论和回复要登录。试运行开着时只记日志不发。' },
           h(Row, { label: '自己发评论' }, f.sw('bili.comment'), h('span', { className: 'ab-muted' }, '每天最多'), f.num('bili.maxCommentsPerDay', { min: 0, max: 50 }), h('span', { className: 'ab-muted' }, '条')),
           h(Row, { label: '真的发出去的概率', hint: '有想说的也不一定发；0 = 只看不评，100% = 想发就发' }, f.range('bili.commentChance', 0, 1, 0.05, (v) => Math.round(v * 100) + '%')),
@@ -2712,6 +2792,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Row, { label: '评论必须有具体内容', hint: '开着就要提到视频里的东西（人名、桥段、字幕里的词），不说「好看」「有意思」这种空话' }, f.sw('bili.anchorRequired')),
           h(Row, { label: '评论至少几个字' }, f.num('bili.commentMinChars', { min: 2, max: 60 }), h('span', { className: 'ab-muted' }, '字')),
           h(Row, { label: '回别人回她的评论' }, f.sw('bili.reply'), h('span', { className: 'ab-muted' }, '每天最多'), f.num('bili.maxRepliesPerDay', { min: 0, max: 100 }), h('span', { className: 'ab-muted' }, '条')),
+          h(Row, { label: '开头加「回复 @昵称」', hint: 'B 站自己的界面已经会显示「回复 @谁」，再手写一遍就重复了；只有用第三方客户端看时才需要打开' }, f.sw('bili.replyMention')),
           h(Row, { label: '看到好玩的分享给你', hint: '私聊发给主人，带视频链接' }, f.sw('bili.shareToOwner')),
           h(Row, { label: '顺手点赞' }, f.sw('bili.like')),
         ),
@@ -2726,14 +2807,15 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             h('div', null,
               h('div', { style: { overflowX: 'auto' } },
                 h('table', { className: 'ab-table' },
-                  h('thead', null, h('tr', null, ['时间', '做了什么', '视频', '内容'].map((x) => h('th', { key: x }, x)))),
+                  h('thead', null, h('tr', null, ['时间', '做了什么', '内容'].map((x) => h('th', { key: x }, x)))),
                   h('tbody', null, pg.rows.map((x, i) => h('tr', { key: i },
                     h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(x.at)),
                     h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, BILI_KIND[x.kind] || x.kind),
-                    h('td', null, x.bvid
-                      ? h('a', { href: 'https://www.bilibili.com/video/' + x.bvid, target: '_blank', rel: 'noreferrer', title: x.title }, '《' + String(x.title || '').slice(0, 26) + (String(x.title || '').length > 26 ? '…' : '') + '》')
-                      : h(Clip, { text: '《' + (x.title || '') + '》', n: 26 })),
-                    h('td', null, h(Clip, { text: x.text, n: 46, max: 420 }))))))),
+                    h('td', null,
+                      x.bvid
+                        ? h('a', { href: 'https://www.bilibili.com/video/' + x.bvid, target: '_blank', rel: 'noreferrer', title: x.title }, '《' + String(x.title || '').slice(0, 26) + (String(x.title || '').length > 26 ? '…' : '') + '》')
+                        : h('div', null, h(Clip, { text: '《' + (x.title || '') + '》', n: 26 })),
+                      x.text ? h('div', { className: 'ab-small ab-muted' }, h(Clip, { text: x.text, n: 46, max: 420 })) : null)))))),
               h(Pager, { page: pg.page, total: pg.total, setPage: pg.setPage, count: pg.count })),
         ),
       )
@@ -2767,6 +2849,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
       const [s, setS] = useState(null)
       const [busy, setBusy] = useState('')
       const [login, setLogin] = useState(null) // 扫码进行中：{ shot, message }
+      const pgd = usePager(s ? s.history : [])
       // 只读状态：打开这一页不会启动浏览器
       const load = () => get('/douyin/state').then(setS)
       useEffect(() => { load() }, [])
@@ -2813,6 +2896,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               h(Btn, { small: true, onClick: act('/douyin/window', 'win', { visible: false }), disabled: !!busy }, '收起窗口'))),
           h(Row, { label: '浏览器路径', hint: '留空 = 自动找 Edge（找不到再找 Chrome / Chromium）' }, f.text('douyin.browserPath', { size: 'wide', placeholder: 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe' })),
         ),
+        h('div', { className: 'ab-section-title' }, '账号'),
         h(Card, { title: '主人抖音号', desc: '填你的抖音号或主页链接，点「核对」。核对过之后，她刷到特别想让你看的视频，会在评论里真的 @你（用抖音自己的 @ 选人，按你的账号 id 认人，你会收到抖音通知；认不出你就不发，不会发假 @）。改了输入要重新核对。' },
           h(Row, { label: '你的抖音号 / 主页链接' }, f.text('douyin.owner.input', { size: 'wide', placeholder: '抖音号，或 https://www.douyin.com/user/…' })),
           h('div', { className: 'ab-flex', style: { marginTop: 4 } },
@@ -2823,6 +2907,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
           h(Row, { label: '回你的抖音私信' }, f.sw('douyin.ownerDm')),
           h(Row, { label: '多久看一次' }, f.num('douyin.dmPollMinutes', { min: 1, max: 60 }), h('span', { className: 'ab-muted' }, '分钟'), h(Btn, { small: true, onClick: act('/douyin/dms', 'dms'), disabled: !!busy }, busy === 'dms' ? '正在看…' : '现在看一次')),
         ),
+        h('div', { className: 'ab-section-title' }, '刷什么'),
         h(Card, { title: '怎么刷', desc: '只在「主动搭话」里设的醒着时间内自己刷。主人在 QQ 里让她「去刷会儿抖音」也行。' },
           h(Row, { label: '定时自己去刷' }, f.sw('douyin.autoBrowse')),
           h(Row, { label: '多久刷一轮' }, f.range('douyin.intervalHours', 1, 24, 1, (v) => v + ' 小时')),
@@ -2860,12 +2945,18 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
             (s.lastRun ? ' · 上次 ' + timeAgo(s.lastRun) : '') +
             (s.lastSkipReason ? ' · 上次没刷成：' + s.lastSkipReason : '')) : null,
           !s ? h(Empty, { icon: '⏳', text: '加载中…' }) : s.history.length === 0 ? h(Empty, { icon: '📱', text: '还没刷过。先扫码登录、打开开关，再点「现在刷一轮」。' }) :
-            h('div', { className: 'ab-list' }, s.history.map((x, i) => h('div', { key: i, className: 'ab-li' },
-              h('div', { className: 'meta' }, timeAgo(x.at), h('br'), DOUYIN_KIND[x.kind] || x.kind),
-              h('div', { className: 'body' },
-                x.awemeId ? h('a', { href: 'https://www.douyin.com/video/' + x.awemeId, target: '_blank', rel: 'noreferrer' }, x.title || (x.author ? x.author + ' 的视频' : x.awemeId)) : null,
-                x.author && x.title ? h('span', { className: 'ab-muted' }, ' · ' + x.author) : null,
-                x.text ? h('div', { className: 'ab-muted' }, (x.atOwner ? '@你 ' : '') + (x.via ? '（' + x.via.map((w) => (w === 'douyin' ? '抖音私信' : 'QQ')).join(' + ') + '）' : '') + x.text) : null)))),
+            h('div', null,
+              h('div', { style: { overflowX: 'auto' } },
+                h('table', { className: 'ab-table' },
+                  h('thead', null, h('tr', null, ['时间', '做了什么', '内容'].map((x) => h('th', { key: x }, x)))),
+                  h('tbody', null, pgd.rows.map((x, i) => h('tr', { key: i },
+                    h('td', { className: 'ab-small ab-muted', style: { whiteSpace: 'nowrap' } }, timeAgo(x.at)),
+                    h('td', { className: 'ab-small', style: { whiteSpace: 'nowrap' } }, DOUYIN_KIND[x.kind] || x.kind),
+                    h('td', null,
+                      x.awemeId ? h('a', { href: 'https://www.douyin.com/video/' + x.awemeId, target: '_blank', rel: 'noreferrer' }, (x.title || (x.author ? x.author + ' 的视频' : x.awemeId)).slice(0, 30)) : null,
+                      x.author && x.title ? h('span', { className: 'ab-small ab-muted' }, ' · ' + x.author) : null,
+                      x.text ? h('div', { className: 'ab-small ab-muted' }, (x.atOwner ? '@你 ' : '') + (x.via ? '（' + x.via.map((w) => (w === 'douyin' ? '抖音私信' : 'QQ')).join(' + ') + '）' : '') + x.text) : null)))))),
+              h(Pager, { page: pgd.page, total: pgd.total, setPage: pgd.setPage, count: pgd.count })),
         ),
       )
     }
@@ -3543,7 +3634,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
         auto && auto.dir ? h('div', { className: 'ab-muted ab-small', style: { marginTop: 6 } }, '备份目录：' + auto.dir) : null)
       return h('div', { className: 'ab-grid' },
         autoCard,
-        h(Card, { title: '导出：把她的东西打包带走', desc: '换设备、留个底、或者给另一台机器用。想带哪些就勾哪些，导出文件里图片和脚本都会原样装进去；到新设备上在同一页「导入」它，记性和表情就都回来了（插件本身还是得先装上）。' },
+        h(Card, { title: '导出备份', desc: '换设备、留个底、或者给另一台机器用。想带哪些就勾哪些，导出文件里图片和脚本都会原样装进去；到新设备上在同一页「导入」它，记性和表情就都回来了（插件本身还是得先装上）。' },
           !parts ? h(Empty, { icon: '⏳', text: '加载中…' }) : h(Fragment, null,
             h('div', { className: 'ab-list' }, parts.map((p) => line(p.id, p.label, p.desc, p.secret, p.files, p.bytes, !!exp[p.id], (v) => setExp({ ...exp, [p.id]: v })))),
             h('div', { className: 'ab-flex', style: { marginTop: 10 } },
@@ -3553,7 +3644,7 @@ h(Card, { title: '群里什么时候必回', desc: '被 @、有人引用回复�
               h(Btn, { small: true, kind: 'primary', disabled: busy === 'export' || !picked.length, onClick: doExport }, busy === 'export' ? '打包中…' : '导出（' + picked.length + ' 项 · ' + fmtSize(total) + '）'),
               h('span', { className: 'ab-spacer' })),
             dir ? h('div', { className: 'ab-muted ab-small', style: { marginTop: 8 } }, '数据目录：' + dir) : null)),
-        h(Card, { title: '导入：把备份装回来', desc: '选一个之前导出的 JSON 文件。导入是「整项替换」：那一项现在的东西会被备份里的覆盖，备份里没有的旧文件会被删掉。导入前会自动把现在的东西抄一份到数据目录的 backups/ 下。' },
+        h(Card, { title: '导入备份', desc: '选一个之前导出的 JSON 文件。导入是「整项替换」：那一项现在的东西会被备份里的覆盖，备份里没有的旧文件会被删掉。导入前会自动把现在的东西抄一份到数据目录的 backups/ 下。' },
           h('div', { className: 'ab-flex' },
             h(Btn, { small: true, kind: pkg ? 'ghost' : 'primary', onClick: pickFile }, pkg ? '换一个文件' : '选择备份文件'),
             pkg ? h('span', { className: 'ab-muted ab-small' }, pkg.name + (pkg.at ? ' · ' + new Date(pkg.at).toLocaleString() : '') + (pkg.app ? ' · v' + pkg.app : '')) : null),

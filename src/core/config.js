@@ -138,6 +138,8 @@ export const DEFAULTS = {
   },
   // 自动备份：开着就按间隔把数据目录打包到 backups/，只留最近 keep 份（手动导出导入也还在）
   backup: { auto: false, everyHours: 24, keep: 7 },
+  // 后台调用预算：每天最多问几次模型（整理记忆、写日记、刷 B 站这些都不走聊天那一轮），0 = 不限
+  background: { perDay: 8 },
   // 本地接口：数据目录 local/ 里的脚本接管这几项（文件要在、开关要开）
   local: { tts: false, image: false, song: false, asr: false },
   bili: {
@@ -230,7 +232,7 @@ export const DEFAULTS = {
   // judge：每轮聊完用模型判心情（更准）。judgeChance 只抽一部分轮次判，judgeCooldownSec 两次判定至少隔多久，
   // judgeMinDelta 小于这个变化就不写盘（防抖）；关掉 judge 就只按关键词打分
   mood: { enabled: true, halfLifeHours: 3, judge: false, judgeChance: 0.25, judgeCooldownSec: 120, judgeMinDelta: 4 },
-  memory: { enabled: true, recallCount: 6, dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
+  memory: { enabled: true, recallCount: 6, writeDebounceMs: 30000, recallMin: 3, recallMax: 8, recallMaxChars: 500, timeBoost: true, strictValid: true, dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
   song: {
     enabled: false,
     root: '', // 翻唱环境目录，留空 = 自动（老安装 C:\Halobot\rvc，新安装在用户目录下）
@@ -455,6 +457,14 @@ export function normalize(raw) {
   c.memory.consolidateTimes = [...new Set((Array.isArray(c.memory.consolidateTimes) ? c.memory.consolidateTimes : String(c.memory.consolidateTimes || '').split(/[\s,，]+/)).map((t) => hhmm(t, '')).filter(Boolean).map((t) => t.padStart(5, '0')))].sort().slice(0, 4)
   if (!c.memory.consolidateTimes.length) c.memory.consolidateTimes = ['04:00', '16:00']
   c.memory.recallCount = num(c.memory.recallCount, 6, 0, 20)
+  c.memory.writeDebounceMs = num(c.memory.writeDebounceMs, 30000, 0, 300000)
+  c.memory.recallMin = num(c.memory.recallMin, 3, 1, 10)
+  c.memory.recallMax = num(c.memory.recallMax, Math.max(3, c.memory.recallCount), 1, 20)
+  c.memory.recallMaxChars = num(c.memory.recallMaxChars, 500, 100, 2000)
+  c.memory.timeBoost = bool(c.memory.timeBoost, true)
+  c.memory.strictValid = bool(c.memory.strictValid, true)
+  if (!isObj(c.background)) c.background = { perDay: 8 }
+  c.background.perDay = num(c.background.perDay, 8, 0, 200)
   g.interests = (Array.isArray(g.interests) ? g.interests : String(g.interests || '').split(/[\s,，]+/)).map((s) => String(s).trim()).filter(Boolean)
   g.minRelevance = num(g.minRelevance, 0.25, 0, 1)
   c.merge.enabled = bool(c.merge.enabled, true)

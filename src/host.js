@@ -21,7 +21,7 @@ import { createSnowLumaManager, DOWNLOAD_PAGE } from './snowluma/manager.js'
 import { createHub, workspaceDirOf } from './chat/hub.js'
 import { createLocal, fileOf, toImageBuffer } from './local/local.js'
 import { createGroupRoles } from './chat/group-roles.js'
-import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache, setUsageSink } from './core/llm.js'
+import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache, setUsageSink, setBudgetGate } from './core/llm.js'
 import { mimeOf } from './chat/inbound.js'
 import { backupStatus, makeBundle, applyBundle, PARTS, listAuto, saveAuto, readAuto, deleteAuto } from './features/backup.js'
 import { createUsage, dayKey } from './features/usage.js'
@@ -280,6 +280,8 @@ export function apply(ctx) {
   // 采样很便宜（几条会话读一次投影/投影缓存），60 秒一次就够：面板每 5 秒拉 /state 时会顺带把增量记上。
   const usage = createUsage({ dsh: ctx, log: logger.child('usage'), getConfig, sessions: () => hub.sessions() })
   setUsageSink((u) => usage.bump(u))
+  // 后台调用预算：面板里能改，改了立刻生效（每次调用前读一次配置）
+  setBudgetGate(() => ({ calls: usage.todayCalls(), perDay: Number(getConfig().background?.perDay) || 0 }))
 
   // ---------- 面板接口的小工具 ----------
   const send = (res, code, body, type = 'application/json; charset=utf-8') => {
@@ -411,6 +413,7 @@ export function apply(ctx) {
     onebot.stop()
     snowluma.dispose()
     setUsageSink(null)
+    setBudgetGate(null)
     usage.save()
   }, 'halobot: 收尾')
 

@@ -9,6 +9,24 @@ export function setUsageSink (fn) {
   usageSink = typeof fn === 'function' ? fn : null
 }
 
+// 后台调用预算：每天最多问几次模型（0 = 不限）。计数来自用量账本，超了在这里就拦下，
+// 免得整理记忆、写日记这些把额度悄悄烧光，聊天那一轮反而没得用。
+let budgetGate = null
+export function setBudgetGate (fn) {
+  budgetGate = typeof fn === 'function' ? fn : null
+}
+
+function overBudget () {
+  if (!budgetGate) return null
+  let g = null
+  try { g = budgetGate() } catch (error) { return null }
+  const per = Number(g && g.perDay) || 0
+  if (per <= 0) return null
+  const used = Number(g.calls) || 0
+  if (used < per) return null
+  return `今天的后台调用用完了（${used}/${per} 次），剩下的等明天`
+}
+
 export function defaultModel(dsh, cfg) {
   if (cfg?.model?.provider && cfg?.model?.model) return { provider: cfg.model.provider, model: cfg.model.model }
   try {
@@ -157,6 +175,10 @@ async function runStream (llm, params) {
  * @returns {Promise<string>}
  */
 export async function askModel (dsh, o) {
+  if (!o.ignoreBudget) {
+    const blocked = overBudget()
+    if (blocked) throw new Error(blocked)
+  }
   const llm = dsh.llm || dsh.get('llm')
   if (!llm || typeof llm.stream !== 'function') throw new Error('宿主没有 llm 服务')
   const t = defaultModel(dsh, o.cfg)
