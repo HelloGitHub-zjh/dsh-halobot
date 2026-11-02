@@ -144,7 +144,9 @@ export const DEFAULTS = {
   // 自动备份：开着就按间隔把数据目录打包到 backups/，只留最近 keep 份（手动导出导入也还在）
   backup: { auto: false, everyHours: 24, keep: 7 },
   // 后台调用预算：每天最多问几次模型（整理记忆、写日记、刷 B 站这些都不走聊天那一轮），0 = 不限
-  background: { perDay: 8 },
+  // 后台调用预算：整理记忆、写日记、刷 B 站、给表情起名、心情判定都算在内。
+  // 默认 20：一天两次整理 + 日记 + 少量顺带调用刚好够；调小会看到「今天的后台调用用完了」。
+  background: { perDay: 20 },
   // 本地接口：数据目录 local/ 里的脚本接管这几项（文件要在、开关要开）
   local: { tts: false, image: false, song: false, asr: false },
   bili: {
@@ -472,8 +474,8 @@ export function normalize(raw) {
   c.memory.privateInGroup = bool(c.memory.privateInGroup, false)
   // 别名：一行一组「主人=小郑」，检索时互相替换，少漏明显相关的记忆
   c.memory.aliases = Array.isArray(c.memory.aliases) ? c.memory.aliases.map((x) => String(x || '').trim().slice(0, 40)).filter(Boolean).slice(0, 40) : []
-  if (!isObj(c.background)) c.background = { perDay: 8 }
-  c.background.perDay = num(c.background.perDay, 8, 0, 200)
+  if (!isObj(c.background)) c.background = { perDay: 20 }
+  c.background.perDay = num(c.background.perDay, 20, 0, 200)
   g.interests = (Array.isArray(g.interests) ? g.interests : String(g.interests || '').split(/[\s,，]+/)).map((s) => String(s).trim()).filter(Boolean)
   g.minRelevance = num(g.minRelevance, 0.25, 0, 1)
   c.merge.enabled = bool(c.merge.enabled, true)
