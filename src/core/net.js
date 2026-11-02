@@ -71,7 +71,21 @@ export async function fetchImage(src, o = {}) {
   }
   if (/^https?:\/\//i.test(s)) {
     await assertPublicUrl(s)
-    const r = await fetch(s, { signal: AbortSignal.timeout(o.timeoutMs ?? 20000), redirect: 'follow' })
+    // 手动跟重定向：每一跳都重新校验，避免「公网地址 302 到 127.0.0.1」这种绕过
+    let url = s
+    let r = null
+    for (let hop = 0; hop <= 3; hop++) {
+      r = await fetch(url, { signal: AbortSignal.timeout(o.timeoutMs ?? 20000), redirect: 'manual' })
+      if (r.status >= 300 && r.status < 400) {
+        const next = r.headers.get('location') || ''
+        try { r.body?.cancel?.() } catch (error) {}
+        if (!next) throw new Error(`HTTP ${r.status}`)
+        url = new URL(next, url).toString()
+        await assertPublicUrl(url)
+        continue
+      }
+      break
+    }
     if (!r.ok) throw new Error(`HTTP ${r.status}`)
     const len = Number(r.headers.get('content-length') || 0)
     if (len > maxBytes) throw new Error('太大了')

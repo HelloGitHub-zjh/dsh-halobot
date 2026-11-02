@@ -368,6 +368,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
 @media (max-width:640px){.ab-install-steps .st span{display:none}}
 @media (max-width:640px){.ab-row .ab-label{flex:none}.ab-row .ab-label small{max-width:none}}
 @media (prefers-reduced-motion:reduce){.ab-root *{transition:none!important;animation:none!important}}
+@media (max-width:720px){.ab-metrics{grid-template-columns:repeat(2,1fr)}.ab-g2,.ab-g4{grid-template-columns:minmax(0,1fr)}.ab-table{font-size:12px}.ab-table th,.ab-table td{padding:6px 8px}.ab-pager{justify-content:space-between;flex-wrap:wrap;gap:6px}.ab-card{padding:12px}.ab-hero-side{width:100%}}
 .ab-badge.dim{background:var(--ab-card-2);color:var(--ab-sub);border:1px solid var(--ab-line)}
 .ab-badge.warn{background:rgba(191,135,0,.14);color:#9a6700;border:1px solid rgba(191,135,0,.3)}
 .ab-badge.err{background:rgba(207,34,46,.1);color:var(--ab-err);border:1px solid rgba(207,34,46,.3)}
@@ -1356,6 +1357,14 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
               { value: 'loose', label: '宽松', desc: '带疑问语气也补，会更主动' },
             ])),
         ),
+        h(Card, { title: '会话轮换', desc: '一个 QQ 会话聊久了，上下文只增不减，越聊越慢越贵（实测 30 小时能涨到 90K token）。用够天数或轮数就换一个新会话，旧的原样留在归档里，还能翻。' },
+          h(Row, { label: '最多用多久', hint: '0 = 不按天数换；默认 30 天' }, f.num('session.maxDays', { min: 0, max: 365 }), h('span', { className: 'ab-muted' }, '天')),
+          h(Row, { label: '最多聊几轮', hint: '0 = 不按轮数换；一轮＝你说一句、她回完' }, f.num('session.maxTurns', { min: 0, max: 5000 }), h('span', { className: 'ab-muted' }, '轮')),
+        ),
+        h(Card, { title: '聊天原文', right: f.sw('chatlog.enabled'), desc: '按天存的原始聊天记录，空间日记、主动搭话、面板的「最近」都靠它。关掉之后完全不留原文，只保留提炼出来的记忆和统计数字。' },
+          h(Row, { label: '每天最多写多少', hint: '被刷屏时兜底，超过就不再写当天的原文' },
+            draft.chatlog && draft.chatlog.enabled === false ? h('span', { className: 'ab-muted' }, '已关掉') : f.num('chatlog.maxMb', { min: 1, max: 500 }), h('span', { className: 'ab-muted' }, 'MB')),
+        ),
         h(TitleFilter, { draft, setDraft }),
         h(OwnerBrief, { draft, setDraft }),
         h('div', { className: 'ab-section-title' }, '群聊策略'),
@@ -2078,6 +2087,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h(Row, { label: '最多占多少字', hint: '这几条拼起来的总字数上限，超了按分数从低往高截' }, f.num('memory.recallMaxChars', { min: 100, max: 2000 })),
           h(Row, { label: '按「上次 / 那天」加权', hint: '问句里带时间词（昨天、上个月、三天前…）时，那个时间段的记忆更容易被想起；只加分，不会把别的排除掉' }, f.sw('memory.timeBoost')),
           h(Row, { label: '只说还有效的', hint: '开着：被新事实取代的旧说法不再塞给她；关着：新旧都参与，可能把过时的说法当成现在的事' }, f.sw('memory.strictValid')),
+          h(Row, { label: '私聊的事不带到群里', hint: '开着：群里只提群里发生过的事和她自己的见闻，私聊说过的不往群里带；关着：全局一份记忆，哪里都能提' }, f.sw('memory.isolateChats')),
+          (draft.memory.isolateChats !== false) ? h(Row, { label: '主人说破时可以提', hint: '开着：你在群里主动提起私聊的事，她可以顺着接；关着：群里一律不提私聊内容' }, f.sw('memory.privateInGroup')) : null,
           h(Row, { label: '称呼别名', hint: '一行一组，等号两边是同一个人或同一个东西的两种叫法（主人=小郑、白米饭=米饭），检索时会互相替换，少漏明显相关的记忆' },
             f.list('memory.aliases', { placeholder: '主人=小郑\n白米饭=米饭' }))),
         h('div', { className: 'ab-section-title' }, '检索质量（近 7 天）'),

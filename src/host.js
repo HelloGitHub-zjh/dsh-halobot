@@ -23,6 +23,8 @@ import { createLocal, fileOf, toImageBuffer } from './local/local.js'
 import { createGroupRoles } from './chat/group-roles.js'
 import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache, setUsageSink, setBudgetGate } from './core/llm.js'
 import { mimeOf } from './chat/inbound.js'
+import { findFfmpeg } from './core/img.js'
+import { statfsSync, writeFileSync as writeSync, unlinkSync as unlinkSync2 } from 'node:fs'
 import { backupStatus, makeBundle, applyBundle, PARTS, listAuto, saveAuto, readAuto, deleteAuto } from './features/backup.js'
 import { createUsage, dayKey } from './features/usage.js'
 import { dataDir, ensureDir } from './core/store.js'
@@ -58,7 +60,6 @@ export function apply(ctx) {
     const merged = enforceAutoExclusive(next, before)
     if (merged.disabled) log.info(`「主动搭话」和「目的引擎」只能开一个，已把${merged.disabled === 'purpose' ? '目的引擎' : '主动搭话'}关掉`)
     cfg = saveConfig(merged.config)
-    return merged.disabled
     // 改机器人号后旧连接的核对结果立刻失效，必须重新核对才能处理消息或完成向导。
     if (before.botQQ !== cfg.botQQ) {
       wrongAccount = ''
@@ -68,7 +69,7 @@ export function apply(ctx) {
     if (bridge && before.bridge.dshTools !== cfg.bridge.dshTools) bridge.refresh()
     if (mods && (JSON.stringify(before.modules) !== JSON.stringify(cfg.modules) || before.safeMode !== cfg.safeMode)) mods.sync().catch(() => {})
     mods?.emit('config', cfg, before)
-    return cfg
+    return merged.disabled
   }
   secrets()
   seedPersonas()
@@ -322,15 +323,38 @@ export function apply(ctx) {
       send(res, 200, { ok: false, message: redact(String(error && error.message ? error.message : error)) })
     }
   }
-  const route = (path, handler) => ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: PREFIX + path, handler: (req, res) => answer(res, () => handler(req, res)) }), `halobot: 路由 ${path}`)
+  const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1'])
+  /**
+   * 面板接口的守门人：DSH 自己的壳有鉴权，插件路由是裸的，这里补三层。
+   * ① 只允许本机（挡掉局域网/端口转发）② 写操作必须 JSON（挡掉表单式 CSRF）
+   * ③ 来源必须同站（挡掉恶意网页 POST 改 ownerQQ 提权）
+   */
+  const guard = (req, res) => {
+    const ip = String((req.socket && req.socket.remoteAddress) || '')
+    const addr = ip.replace(/^::ffff:/, '')
+    if (addr && !LOOPBACK.has(addr)) return send(res, 403, { ok: false, message: '只允许本机访问' }), false
+    const method = String(req.method || 'GET').toUpperCase()
+    if (method !== 'GET' && method !== 'HEAD') {
+      const ct = String((req.headers && req.headers['content-type']) || '')
+      if (!/^application\/json|^multipart\/form-data/i.test(ct)) return send(res, 415, { ok: false, message: '请用 application/json 提交' }), false
+    }
+    const origin = String((req.headers && req.headers.origin) || '')
+    const referer = String((req.headers && req.headers.referer) || '')
+    const host = String((req.headers && req.headers.host) || '')
+    const same = (u) => { try { return new URL(u).host === host } catch (error) { return false } }
+    const okFrom = origin ? same(origin) : referer ? same(referer) : true
+    if (!okFrom) return send(res, 403, { ok: false, message: '跨站请求被拒绝了' }), false
+    return true
+  }
+  const route = (path, handler) => ctx.effect(() => ctx.webServer.register({ kind: 'exact', path: PREFIX + path, handler: (req, res) => { if (!guard(req, res)) return; answer(res, () => handler(req, res)) } }), `halobot: 路由 ${path}`)
   ctx.effect(() => ctx.webServer.register({
     kind: 'prefix',
     path: PREFIX, // DSH 按「路径 = 前缀 或 以 前缀/ 开头」匹配，前缀本身不带结尾的 /
-    handler: (req, res) => answer(res, () => {
+    handler: (req, res) => { if (!guard(req, res)) return; answer(res, () => {
       let path = ''
       try { path = new URL(req.url, 'http://x').pathname } catch (error) {}
       return mods.handle(path, req, res)
-    }),
+    }) },
   }), 'halobot: 模块接口')
 
   // ---------- 模块 ----------
@@ -712,6 +736,28 @@ export function apply(ctx) {
     const mins = last ? Math.round((Date.now() - last) / 60000) : -1
     add('recv', '最近收到消息', last > 0, last ? `${mins} 分钟前（${new Date(last).toLocaleString()}）` : '还没收到过', '在 QQ 上给机器人号发一句话试试', last > 0 && mins > 360 ? 'warn' : undefined)
     add('botqq', '机器人 QQ 号', Boolean(cfg.botQQ), cfg.botQQ || '没填', '在「连接」页填机器人号')
+    // —— 运维项：磁盘、数据目录、ffmpeg、备份 ——
+    try {
+      const st = statfsSync(dataDir())
+      const freeGb = (st.bavail * st.bsize) / 1024 ** 3
+      add('disk', '磁盘空间', freeGb > 1, `可用 ${freeGb.toFixed(1)} GB`, '清理一下磁盘，至少留 1GB 给表情、截图和备份', freeGb > 1 ? 'ok' : 'warn')
+    } catch (error) { add('disk', '磁盘空间', true, '这台机器读不到磁盘信息（不影响使用）', '') }
+    try {
+      ensureDir(dataDir())
+      const probe = join(dataDir(), '.write-probe')
+      writeSync(probe, 'ok')
+      unlinkSync2(probe)
+      add('data-writable', '数据目录可写', true, dataDir(), '')
+    } catch (error) { add('data-writable', '数据目录可写', false, String(error.message || error).slice(0, 120), '检查数据目录权限，或换一个可写的位置（HALOBOT_DATA_DIR）') }
+    const ff = findFfmpeg(cfg.song?.ffmpegPath || cfg.bili?.ffmpegPath || '')
+    const ffNeeded = Boolean(cfg.song?.enabled || cfg.bili?.vision)
+    add('ffmpeg', 'ffmpeg', Boolean(ff) || !ffNeeded, ff || (ffNeeded ? '没找到' : '没装（翻唱/看画面用得上，现在没开）'), '装一个 ffmpeg（macOS: brew install ffmpeg），或在「刷 B 站」页填路径', ffNeeded && !ff ? 'warn' : 'ok')
+    if (cfg.backup?.auto) {
+      const newest = listAuto()[0]
+      const gapH = newest ? (Date.now() - newest.at) / 3600_000 : -1
+      const limitH = Math.max(1, Number(cfg.backup.everyHours) || 24) * 1.5
+      add('backup', '自动备份', gapH >= 0 && gapH <= limitH, newest ? `${Math.round(gapH)} 小时前备份过` : '还没有备份', '点「现在备份一份」看看报什么错', gapH >= 0 && gapH <= limitH ? 'ok' : 'warn')
+    }
     const fail = checks.filter((c) => !c.ok && c.level === 'err').length
     const warn = checks.filter((c) => c.level === 'warn').length
     return { ok: true, checks, fail, warn, at: Date.now(), summary: fail ? `${fail} 项要处理` : warn ? '能跑，但有几项要留意' : '全部正常' }

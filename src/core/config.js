@@ -26,7 +26,8 @@ export const DEFAULTS = {
   files: { enabled: true, maxMB: 50, dirs: [] },
   // 危险命令确认（可选保护，默认关）：她在私聊里执行删根目录/格式化/关机/下载后直接执行等
   // 终端命令前，先发 QQ 私聊问主人，回复「确认」才执行；超时或「取消」就拦下。
-  security: { dangerConfirm: false },
+  // 主人私聊里遇到 rm -rf / 之类的命令先问一句；默认开（以前默认关，等于白装）
+  security: { dangerConfirm: true },
   snowluma: {
     dir: 'C:\\Halobot\\snowluma', // 主人自己下载解压到这里（EULA 不允许自动部署）
     autoStart: true, // 随 DSH 启动它（只启动主人已安装并同意过协议的副本）
@@ -54,6 +55,10 @@ export const DEFAULTS = {
     holidays: [],
     workdays: [],
   },
+  // 会话用久了就换（0 = 不换）。上下文只增不减，压缩又被 billion-context 关了，只能靠轮换兜底。
+  // 聊天原文落盘（空间日记 / 主动搭话 / 面板要用）。关掉就完全不留原文，只保留记忆和统计。
+  chatlog: { enabled: true, maxMb: 20 },
+  session: { maxDays: 30, maxTurns: 200 },
   merge: { enabled: true, waitSec: 2.5, maxSec: 8, groupWaitSec: 5, groupMaxSec: 15 }, // 连发合并：对方停顿 waitSec 秒再一起回，最多等 maxSec 秒；群里等得久一点，把一段话攒齐
   imageGen: {
     enabled: false,
@@ -232,7 +237,7 @@ export const DEFAULTS = {
   // judge：每轮聊完用模型判心情（更准）。judgeChance 只抽一部分轮次判，judgeCooldownSec 两次判定至少隔多久，
   // judgeMinDelta 小于这个变化就不写盘（防抖）；关掉 judge 就只按关键词打分
   mood: { enabled: true, halfLifeHours: 3, judge: false, judgeChance: 0.25, judgeCooldownSec: 120, judgeMinDelta: 4 },
-  memory: { enabled: true, recallCount: 6, writeDebounceMs: 30000, recallMin: 3, recallMax: 8, recallMaxChars: 500, timeBoost: true, strictValid: true, aliases: [], dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
+  memory: { enabled: true, recallCount: 6, writeDebounceMs: 30000, recallMin: 3, recallMax: 8, recallMaxChars: 500, timeBoost: true, strictValid: true, isolateChats: true, privateInGroup: false, aliases: [], dailyConsolidate: true, consolidateTimes: ['04:00', '16:00'] }, // 每天这几个时间把临时记忆（聊天流水）整理进长期记忆、相处经验和说话方式；过了一天的流水整理完清空
   song: {
     enabled: false,
     root: '', // 翻唱环境目录，留空 = 自动（老安装 C:\Halobot\rvc，新安装在用户目录下）
@@ -326,7 +331,7 @@ export function normalize(raw) {
   // 发文件：开关、大小上限、额外允许的目录（只认绝对路径；空行忽略）
   if (!isObj(c.files)) c.files = {}
   if (!isObj(c.security)) c.security = {}
-  c.security.dangerConfirm = bool(c.security.dangerConfirm, false)
+  c.security.dangerConfirm = bool(c.security.dangerConfirm, true)
   c.files.enabled = bool(c.files.enabled, true)
   c.files.maxMB = num(c.files.maxMB, 50, 1, 2048)
   c.files.dirs = (Array.isArray(c.files.dirs) ? c.files.dirs : String(c.files.dirs || '').split(/[\n,，;；]+/))
@@ -463,6 +468,8 @@ export function normalize(raw) {
   c.memory.recallMaxChars = num(c.memory.recallMaxChars, 500, 100, 2000)
   c.memory.timeBoost = bool(c.memory.timeBoost, true)
   c.memory.strictValid = bool(c.memory.strictValid, true)
+  c.memory.isolateChats = bool(c.memory.isolateChats, true)
+  c.memory.privateInGroup = bool(c.memory.privateInGroup, false)
   // 别名：一行一组「主人=小郑」，检索时互相替换，少漏明显相关的记忆
   c.memory.aliases = Array.isArray(c.memory.aliases) ? c.memory.aliases.map((x) => String(x || '').trim().slice(0, 40)).filter(Boolean).slice(0, 40) : []
   if (!isObj(c.background)) c.background = { perDay: 8 }
@@ -474,6 +481,12 @@ export function normalize(raw) {
   c.merge.maxSec = Math.max(c.merge.waitSec, num(c.merge.maxSec, 8, 0, 60))
   c.merge.groupWaitSec = num(c.merge.groupWaitSec, 5, 0, 60)
   c.merge.groupMaxSec = Math.max(c.merge.groupWaitSec, num(c.merge.groupMaxSec, 15, 0, 120))
+  if (!isObj(c.session)) c.session = { maxDays: 30, maxTurns: 200 }
+  c.session.maxDays = num(c.session.maxDays, 30, 0, 365)
+  c.session.maxTurns = Math.round(num(c.session.maxTurns, 200, 0, 5000))
+  if (!isObj(c.chatlog)) c.chatlog = { enabled: true, maxMb: 20 }
+  c.chatlog.enabled = bool(c.chatlog.enabled, true)
+  c.chatlog.maxMb = num(c.chatlog.maxMb, 20, 1, 500)
   c.titleFilter.enabled = bool(c.titleFilter.enabled, true)
   c.titleFilter.groups = qqList(c.titleFilter.groups) // 和群白名单同一套规则
   c.titleFilter.title = String(c.titleFilter.title ?? '').replace(/[​-‍﻿]/g, '').trim().slice(0, 30) || '哈洛'

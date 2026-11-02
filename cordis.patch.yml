@@ -55,6 +55,8 @@
                   thresholdChars: 8192
                   headChars: 4096
                   tailChars: 1024
+          - id: image-offload
+            name: '@deepseek-ai/dsh-compaction-image-offload'
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
@@ -106,6 +108,8 @@
                   thresholdChars: 8192
                   headChars: 4096
                   tailChars: 1024
+          - id: image-offload
+            name: '@deepseek-ai/dsh-compaction-image-offload'
           - id: tool-web
             name: '@deepseek-ai/dsh-tool-web'
             config:
@@ -141,3 +145,5 @@
                 name: '@deepseek-ai/dsh-compaction-basic'
               - id: command-compact
                 name: '@deepseek-ai/dsh-command-compact'
+          - id: image-offload
+            name: '@deepseek-ai/dsh-compaction-image-offload'

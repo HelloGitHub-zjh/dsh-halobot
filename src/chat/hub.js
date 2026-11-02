@@ -6,7 +6,7 @@
 import { randomUUID } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { appendFileSync, mkdirSync, readFileSync, existsSync, readdirSync, statSync, unlinkSync } from 'node:fs'
-import { basename, isAbsolute, join, relative, resolve } from 'node:path'
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { dataDir, readJson, writeJson } from '../core/store.js'
 import { parseMessageEvent } from './inbound.js'
@@ -17,7 +17,8 @@ import { fetchImage, segmentBytes } from '../core/net.js'
 import { toMono16k } from '../voice/wav.js'
 import { mimeOf } from './inbound.js'
 import { redact } from '../core/redact.js'
-import { defaultModel, pickReasoningEffort, canSeeImages, modelVision } from '../core/llm.js'
+import { defaultModel, pickReasoningEffort, canSeeImages, modelVision, budgetBlocked } from '../core/llm.js'
+import { shouldRotateSession, localSendable } from './guards.js'
 import { resolveChatModel } from './chat-model.js'
 import { createFaces, textToSegments, stripFaceTags, speakableText } from './faces.js'
 import { expandMentions, hasMention } from './mentions.js'
@@ -296,11 +297,17 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
   // ---------- 聊天流水（给空间日记、主动搭话、面板用） ----------
   function logChat(chatId, who, text, uid = '') {
     try {
+      const cc = getConfig().chatlog || {}
+      if (cc.enabled === false) return
       const d = new Date()
       const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
       const dir = dataDir('chatlog')
       mkdirSync(dir, { recursive: true })
-      appendFileSync(join(dir, `${day}.jsonl`), JSON.stringify({ t: Date.now(), chatId, who, ...(uid ? { uid: String(uid) } : {}), text: redact(String(text).slice(0, 500)) }) + '\n', 'utf8')
+      const file = join(dir, `${day}.jsonl`)
+      // 一天最多留 N MB，超了就停写（不然被刷屏时磁盘会被吃满）
+      const capMb = Number(cc.maxMb) > 0 ? Number(cc.maxMb) : 20
+      try { if (statSync(file).size > capMb * 1024 * 1024) return } catch (error) {}
+      appendFileSync(file, JSON.stringify({ t: Date.now(), chatId, who, ...(uid ? { uid: String(uid) } : {}), text: redact(String(text).slice(0, 500)) }) + '\n', 'utf8')
     } catch (error) {}
   }
 
@@ -366,7 +373,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       log.debug('改会话标题失败：', error.message)
     }
     const m = map()
-    m.chats[chat.chatId] = { sessionId: sid, preset, level, createdAt: Date.now(), title: titleFor(chat) }
+    m.chats[chat.chatId] = { sessionId: sid, preset, level, createdAt: Date.now(), turns: 0, title: titleFor(chat) }
     saveMap(m)
     log.info(`为 ${chat.chatId} 新建了 DSH 会话 ${sid.slice(-8)}（${preset}）`)
     return sid
@@ -388,6 +395,17 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
     const preset = presetFor(level, cfg)
     const entry = map().chats[chat.chatId]
     let sid = entry && entry.preset === preset && entry.level === level ? entry.sessionId : ''
+    // 会话用久了就换：上下文只增不减，压缩又被 billion-context 关掉，只能靠轮换兜底
+    const rot = cfg.session || {}
+    const spin = sid ? shouldRotateSession(entry, rot) : { rotate: false, why: '' }
+    if (sid && spin.rotate) {
+      log.info(`${chat.chatId}：会话${spin.why}，换一个新的（旧的进归档，还能翻）`)
+      try {
+        const reg = dsh.workspaceRegistry || dsh.get('workspaceRegistry')
+        if (reg && typeof reg.archiveSession === 'function') await reg.archiveSession(sid, { stopActivity: true }).catch(() => {})
+      } catch (error) {}
+      sid = ''
+    }
     let agent = null
     if (sid) {
       try {
@@ -781,6 +799,10 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
   }
 
   async function sendImage(chatId, src, replyId, userId) {
+    if (!localSendable(src, dataDir())) {
+      log.warn(`拦下一次可疑的图片外发：${String(src).slice(0, 120)}`)
+      return null
+    }
     try {
       const buf = await fetchImage(src, { maxBytes: 10 * 1024 * 1024 })
       return sendSegments(chatId, [...quote(replyId), ...mention(userId), { type: 'image', data: { file: 'base64://' + buf.toString('base64') } }], `[图片] ${src.slice(-40)}`)
@@ -955,6 +977,14 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       return
     }
     if (event.type === 'turn/end') {
+      try {
+        const cid = sessionToChat.get(sessionKey(event.sessionId)) || ''
+        const mm = map()
+        if (cid && mm.chats[cid]) {
+          mm.chats[cid].turns = Number(mm.chats[cid].turns || 0) + 1
+          saveMap(mm)
+        }
+      } catch (error) {}
       slowNoticeSent.delete(key)
       running.delete(chatId)
       stopTyping(key)
@@ -1615,6 +1645,13 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       if (c.type === 'text') p.texts.push(c.text)
       else if (c.type === 'image' && p.images.length < 4) p.images.push(c)
     }
+    // 她正忙时对方能连发很多条：攒到 12 条 / 4000 字就丢最老的，否则一轮塞进去会把她撑爆
+    if (p.texts.length > 12 || p.texts.join('').length > 4000) {
+      const dropped = p.texts.length - 12
+      p.texts = p.texts.slice(-12)
+      while (p.texts.join('').length > 4000 && p.texts.length > 1) p.texts.shift()
+      log.info(`${chat.chatId}：攒的消息太多了，丢掉最早的 ${Math.max(1, dropped)} 条`)
+    }
     if (extra.stickerPick) p.stickerPick = (p.stickerPick || 0) + extra.stickerPick
     if (senderId) p.senders.add(String(senderId))
     p.wantVoice = p.wantVoice || wantVoice
@@ -1808,6 +1845,8 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
    *  不带 key 走 `<name>` 那条（向后兼容，老会话继续复用），带 key 走 `<name>:<key>`，
    *  于是工作区里各自一条会话、进度互不阻塞，也不会把两种提示词混进同一段上下文。 */
   async function runSystemTurn(name, title, prompt, { timeoutMs = 180000, noTools = false, key: scope = '' } = {}) {
+    const blocked = budgetBlocked()
+    if (blocked) throw new Error(blocked)
     const suffix = String(scope || '').trim().replace(/[^\w:-]/g, '').slice(0, 32)
     const chat = { chatId: suffix ? `system:${name}:${suffix}` : `system:${name}`, kind: 'system', title, noTools: !!noTools }
     const { agent, sessionId } = await agentFor(chat)

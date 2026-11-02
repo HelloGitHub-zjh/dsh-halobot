@@ -98,6 +98,25 @@ export function correctionIntent(text) {
   return CORRECT_RE.test(String(text || ''))
 }
 
+/**
+ * 跨聊天隔离：私聊里说过的事默认不带到群里；在 A 的私聊里也不提「关于别人」的记忆。
+ * 记忆条目的 chatId 记的是「在哪儿记下的」，about 是「关于谁」。
+ */
+export function visibleInChat(item, { kind = 'private', selfQq = '', ownerQq = '', allowPrivateInGroup = false } = {}) {
+  const it = item || {}
+  const from = String(it.chatId || '')
+  const about = String(it.about || '')
+  const fromPrivate = from.startsWith('private:')
+  if (kind === 'group') {
+    if (!fromPrivate) return true
+    // 群里默认不提私聊里的事；主人自己说破了才允许（allowPrivateInGroup）
+    return Boolean(allowPrivateInGroup) && Boolean(ownerQq) && (about === String(ownerQq) || !about)
+  }
+  // 私聊：只提「关于这个人」的和「她自己的/群里的公共见闻」，不提关于别人的私聊记忆
+  if (fromPrivate && about && about !== String(selfQq || '') && about !== String(ownerQq || '')) return false
+  return true
+}
+
 // ---------- 检索埋点：命中率与零命中的查询，面板拿来当优化清单 ----------
 
 const recallFile = () => dataDir('memory-recall.jsonl')
@@ -716,7 +735,7 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     if (hitTimer && typeof hitTimer.unref === 'function') hitTimer.unref()
   }
 
-  function recall(query, { about, aboutName = '', limit, where = '', context = '', range = null, includeExpired = false } = {}) {
+  function recall(query, { about, aboutName = '', limit, where = '', context = '', range = null, includeExpired = false, scope = null } = {}) {
     const max = limit ?? (Number(getConfig().memory.recallMax) || Number(getConfig().memory.recallCount) || 6)
     const pairs = parseAliases(getConfig().memory?.aliases)
     const said = String(query || '')
@@ -744,6 +763,9 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     if (context && hits.length < max) {
       for (const h of search(index(), context, { about, limit: max, minScore: 0.5, range, includeExpired })) push(h, 0.6, '（上一句）')
     }
+    const allowed = scope ? hits.filter((h) => visibleInChat(h.it, scope)) : hits
+    hits.length = 0
+    hits.push(...allowed)
     hits.sort((a, b) => b.score - a.score)
     recallLog.unshift({ at: Date.now(), where, query: String(query).slice(0, 120), hits: hits.map((h) => ({ id: h.it.id, text: h.it.text, score: Number(h.score.toFixed(2)), why: h.why || [] })) })
     recordRecall({ where, query: said.slice(0, 120), used: hits.length, zero: hits.length === 0, variants: variants.length })
@@ -965,9 +987,11 @@ export function createMemoryStore({ dsh, getConfig, hub, log }) {
     const minN = Math.min(maxN, Math.max(1, Number(cfg.recallMin) || 3))
     const range = cfg.timeBoost === false ? null : timeWindow(q)
     const strict = cfg.strictValid !== false
-    let found = recall(q, { about, aboutName, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: !strict }).filter((h) => !shown.has(h.it.id))
+    // 跨聊天隔离：私聊的事不带到群里，A 的私聊里不提关于别人的记忆
+    const scope = cfg.isolateChats === false ? null : { kind: (chat && chat.kind) || 'private', selfQq: (chat && chat.userId) || '', ownerQq: String(getConfig().ownerQQ || ''), allowPrivateInGroup: cfg.privateInGroup === true }
+    let found = recall(q, { about, aboutName, scope, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: !strict }).filter((h) => !shown.has(h.it.id))
     // 只算「还有效的」时一条都没有：把以前的说法也翻出来，但标清楚是旧的
-    if (!found.length) found = recall(q, { about, aboutName, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: true, includeInvalid: true }).filter((h) => !shown.has(h.it.id))
+    if (!found.length) found = recall(q, { about, aboutName, scope, where: (chat && chat.chatId) || '', context: ctxText, limit: maxN, range, includeExpired: true, includeInvalid: true }).filter((h) => !shown.has(h.it.id))
     const strong = found.filter((h) => h.score >= 0.5).length
     const keep = Math.min(maxN, Math.max(minN, Math.ceil(strong * 1.5)))
     const hits = found.slice(0, keep)

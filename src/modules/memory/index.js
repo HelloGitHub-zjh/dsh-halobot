@@ -49,7 +49,9 @@ export default {
           properties: { query: str('想找什么') },
           required: ['query'],
           execute: async ({ query }) => {
-            const hits = memory.recall(String(query || ''), { about: chat.userId, limit: 8, where: current + '（翻记忆）' })
+            const mc = api.config().memory || {}
+            const scope = mc.isolateChats === false ? null : { kind: chat.kind, selfQq: chat.userId || '', ownerQq: String(api.config().ownerQQ || ''), allowPrivateInGroup: mc.privateInGroup === true }
+            const hits = memory.recall(String(query || ''), { about: chat.userId, limit: 8, scope, where: current + '（翻记忆）' })
             return hits.length ? { ok: true, message: hits.map((h) => memoryLine(h.it)).join('；') } : { ok: true, message: '没想起相关的事' }
           },
         }),

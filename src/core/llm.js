@@ -16,6 +16,11 @@ export function setBudgetGate (fn) {
   budgetGate = typeof fn === 'function' ? fn : null
 }
 
+/** 后台预算是否已经用完；用完返回一句给人看的话，没用完返回 null（系统回合也要过这一关）。 */
+export function budgetBlocked () {
+  return overBudget()
+}
+
 function overBudget () {
   if (!budgetGate) return null
   let g = null
