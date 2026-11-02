@@ -7,7 +7,7 @@
 //   - `<poke>` = 戳一戳对方
 //   - `<reply:编号>` 写在某句前面 = 这句以「引用回复」发出（群聊里引用提示词中带编号的那条消息）
 //   - 整轮只输出 `[沉默]`（或空）= 这次不说话（群聊插话用）
-// 另外顺手把模型偶尔漏出来的 Markdown 洗掉——QQ 不渲染 Markdown。
+// 另外顺手把模型偶尔漏出来的 Markdown、HTML 标签、行首多打的 `text` 洗掉——QQ 不渲染 Markdown。
 
 export const SILENCE = '[沉默]'
 
@@ -26,6 +26,22 @@ export function stripMarkdown(text) {
     .replace(/[ \t]+$/gm, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim()
+}
+
+const HTML_TAGS =
+  'p|div|span|br|hr|b|i|u|s|del|em|strong|small|big|center|code|pre|h[1-6]|ul|ol|li|dl|dt|dd|blockquote|a|font|img|table|thead|tbody|tfoot|tr|td|th|q|cite|sub|sup|mark|section|article|header|footer|figure|figcaption'
+
+/**
+ * 洗掉模型偶尔漏出来的「标签残渣」。QQ 是纯文本，这些东西只能原样显示成乱码。
+ * 见过的样子：整段被 `<p>…</p>` 包住、单独一行 `</p>`、行首多打一个 `text`、DSML 工具调用的尾巴。
+ */
+export function stripArtifacts(text) {
+  return String(text || '')
+    .replace(/<br\s*\/?>/gi, '\n') // 换行标签留着当换行，别把两句话粘一起
+    .replace(new RegExp(`<\\/?(?:${HTML_TAGS})(?:\\s[^>]*)?\\/?>`, 'gi'), '')
+    .replace(/<\/?(?:\｜{2}|\|{2})[^>]*>/g, '') // 半截 DSML 工具调用标签
+    .replace(/^\s*text[ \t]*[\n，,：:]\s*/i, '') // 行首多打的「text」
+    .replace(/^\s*text(?=[\u4e00-\u9fa5])/i, '')
 }
 
 /** 是不是「这次不说话」。 */
@@ -67,7 +83,7 @@ export function parseReply(text, opts = {}) {
       } else if (m[1] !== undefined) {
         replyTo = m[1]
       } else if (m[2] !== undefined) {
-        const v = stripMarkdown(m[2])
+        const v = stripMarkdown(stripArtifacts(m[2]))
         if (v) items.push({ kind: 'voice', value: v })
       } else if (m[3] !== undefined) {
         const v = m[3].trim()
@@ -196,7 +212,7 @@ function capBubbles(items, max = MAX_BUBBLES) {
 }
 
 function pushText(items, s, opts = {}) {
-  const t = stripMarkdown(String(s || '').replace(/<\/?reply[^>]*>/g, '')) // 写坏的引用标签直接去掉
+  const t = stripMarkdown(stripArtifacts(String(s || '').replace(/<\/?reply[^>]*>/g, ''))) // 写坏的引用标签、漏出来的 HTML/`text` 直接去掉
   if (!t || isSilence(t)) return
   for (const line of splitLines(t, opts)) if (!isSilence(line)) items.push({ kind: 'text', value: line })
 }
