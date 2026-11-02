@@ -1322,7 +1322,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h('div', { className: 'ab-muted ab-small', style: { marginTop: 6 } }, '她只会当成自己最近在群里看到的，不会把群聊原文说成是主人发的。'))
     }
 
-    function Group({ draft, setDraft }) {
+    function Group({ draft, setDraft, go }) {
       const f = useField(draft, setDraft)
       const overrides = draft.group.overrides || {}
       const [newGid, setNewGid] = useState('')
@@ -1360,6 +1360,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         h(Card, { title: '会话轮换', desc: '一个 QQ 会话聊久了，上下文只增不减，越聊越慢越贵（实测 30 小时能涨到 90K token）。用够天数或轮数就换一个新会话，旧的原样留在归档里，还能翻。' },
           h(Row, { label: '最多用多久', hint: '0 = 不按天数换；默认 30 天' }, f.num('session.maxDays', { min: 0, max: 365 }), h('span', { className: 'ab-muted' }, '天')),
           h(Row, { label: '最多聊几轮', hint: '0 = 不按轮数换；一轮＝你说一句、她回完' }, f.num('session.maxTurns', { min: 0, max: 5000 }), h('span', { className: 'ab-muted' }, '轮')),
+          h(Row, { label: '现在就换', hint: '不想等天数/轮数，直接给某个聊天开一个新会话：旧的归档，下一句起用新的' },
+            h(Btn, { small: true, kind: 'ghost', onClick: () => { if (go) go('sessions') } }, '去「会话」页挑一个')),
         ),
         h(Card, { title: '聊天原文', right: f.sw('chatlog.enabled'), desc: '按天存的原始聊天记录，空间日记、主动搭话、面板的「最近」都靠它。关掉之后完全不留原文，只保留提炼出来的记忆和统计数字。' },
           h(Row, { label: '每天最多写多少', hint: '被刷屏时兜底，超过就不再写当天的原文' },
@@ -3402,7 +3404,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const load = () => get('/sessions/list').then((r) => setData(r.ok ? r : { list: [], error: r.message }))
       useEffect(() => { load() }, [])
       const reset = async (c) => {
-        if (!window.confirm(`让「${c.title}」重新开始？\n\n现在的会话会归档（侧栏「归档」里还能找回），下一条消息会开一个新会话。`)) return
+        if (!window.confirm(`给「${c.title}」换一个新会话？\n\n现在的会话会归档（侧栏「归档」里还能找回），下一条消息会开一个新会话。`)) return
         setBusy(c.chatId)
         const r = await post('/sessions/reset-one', { chatId: c.chatId })
         setBusy('')
@@ -3432,7 +3434,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
           h('td', { className: 'ab-small' },
             h('span', { style: { cursor: 'pointer', borderBottom: '1px dotted var(--ab-line)' }, title: '点一下复制完整会话 ID：' + c.sessionId, onClick: () => copy(c.sessionId) },
               String(c.sessionId).replace(/^session-/, '').slice(0, 8))),
-          h('td', null, h(Btn, { small: true, disabled: busy === c.chatId, onClick: () => reset(c) }, busy === c.chatId ? '…' : '重新开始')))
+          h('td', null, h(Btn, { small: true, disabled: busy === c.chatId, onClick: () => reset(c) }, busy === c.chatId ? '…' : '换个新会话')))
       })
       const body = !data ? h(Empty, { icon: '⏳', text: '加载中…' })
         : data.error ? h(Empty, { text: data.error })
@@ -3447,7 +3449,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       return h('div', { className: 'ab-grid' },
         h(Card, {
           title: 'QQ 会话',
-          desc: '每个聊过的私聊 / 群在这里对应一个独立的 DSH 会话，上下文、记忆和模型都是分开的。重新开始只影响这一个聊天。',
+          desc: '每个聊过的私聊 / 群在这里对应一个独立的 DSH 会话，上下文、记忆和模型都是分开的。「换个新会话」只影响这一个聊天：旧的归档起来（侧栏「归档」还能翻），下一条消息起用新的。',
           right: h(Btn, { small: true, kind: 'ghost', onClick: load }, '刷新'),
         }, body))
     }
