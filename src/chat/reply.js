@@ -35,6 +35,18 @@ const HTML_TAGS =
  * 洗掉模型偶尔漏出来的「标签残渣」。QQ 是纯文本，这些东西只能原样显示成乱码。
  * 见过的样子：整段被 `<p>…</p>` 包住、单独一行 `</p>`、行首多打一个 `text`、DSML 工具调用的尾巴。
  */
+/**
+ * 工具输出被十六进制化后模型会照抄（「E6 88 91 是我」）。清掉成串的两位十六进制，
+ * 顺手收一收多余空格——宁可少一句，也别让她把乱码念出来。
+ */
+export function stripHexRuns(text) {
+  return String(text || '')
+    .replace(/(?:\b[0-9A-Fa-f]{2}\b[ \t]*){3,}/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([，。！？；：、])/g, '$1')
+    .trim()
+}
+
 export function stripArtifacts(text) {
   return String(text || '')
     .replace(/<br\s*\/?>/gi, '\n') // 换行标签留着当换行，别把两句话粘一起
@@ -166,6 +178,9 @@ function beats(t) {
   return out.filter(Boolean)
 }
 
+/** 一截短于这个长度就并进相邻那截，免得单个「哦」「行吧」这种碎气泡单独冒出来。 */
+const MIN_BEAT = 4
+
 /** 条数超了就合并相邻最短的两截（保留她原来的顺序和停顿位置）。并起来用空格隔开，读着还是一顿一顿的。 */
 function packBeats(list, max) {
   const out = list.slice()
@@ -177,6 +192,16 @@ function packBeats(list, max) {
       if (len < size) { size = len; at = i }
     }
     out.splice(at, 2, `${out[at]} ${out[at + 1]}`)
+  }
+  // 条数没超，但某一截太碎：并进相邻更短的那截，不硬拆成独立气泡
+  while (out.length > 1) {
+    const at = out.findIndex((s) => s.length < MIN_BEAT)
+    if (at < 0) break
+    const prev = at > 0 ? at - 1 : -1
+    const next = at + 1 < out.length ? at + 1 : -1
+    const target = prev >= 0 && (next < 0 || out[prev].length <= out[next].length) ? prev : next
+    const [a, b] = target < at ? [target, at] : [at, target]
+    out.splice(a, 2, `${out[a]} ${out[b]}`)
   }
   return out
 }

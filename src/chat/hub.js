@@ -10,7 +10,7 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { homedir } from 'node:os'
 import { dataDir, readJson, writeJson } from '../core/store.js'
 import { parseMessageEvent } from './inbound.js'
-import { parseReply, bubbleDelay, wantsVoice } from './reply.js'
+import { parseReply, bubbleDelay, wantsVoice, stripHexRuns } from './reply.js'
 import { decideGroupReply, policyFor, topicRelevance } from './group-policy.js'
 import { checkAllowed, levelFor, presetFor, isOwner } from './access.js'
 import { fetchImage, segmentBytes } from '../core/net.js'
@@ -115,6 +115,7 @@ export function dropFaces(text, chance = 1, rand = Math.random) {
   if (c <= 0) return s.replace(/<face:\s*[^>]{1,20}?\s*>(?:\s*<\/face>)?/g, '')
   return s.replace(/<face:\s*([^>]{1,20}?)\s*>(?:\s*<\/face>)?/g, (all) => (rand() < c ? all : ''))
 }
+
 
 /**
  * 她刚说完的这句是不是在等对方回答，以及还该不该补一句（纯函数，方便单测）。
@@ -848,7 +849,7 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       // 整轮只有表情时还是照发，不然就真的一句话都没有了
       if (dropped > 0 && kept.some((i) => i.kind !== 'sticker')) {
         items = kept
-        log.debug(`${chatId}：${dropped} 张表情按概率没发（${Math.round(chance * 100)}%）`)
+        log.info(`${chatId}：${dropped} 张表情按概率没发（${Math.round(chance * 100)}%）`)
       }
     }
     // 对方明确要语音、她却只打了字：整段改成语音发（模型偶尔会忘，这里兜底）
@@ -891,15 +892,20 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
       const stuck = pending.get(chatId)
       if (i > 0 && stuck?.waiting) {
         const rest = items.slice(i).filter((x) => x.kind === 'text').map((x) => x.value)
-        if (rest.length) carryBubbles.set(chatId, [...(carryBubbles.get(chatId) || []), ...rest])
-        log.info(`${chatId}：对方又开口了，剩下 ${rest.length} 句留到下一轮`)
+        if (rest.length) {
+          carryBubbles.set(chatId, [...(carryBubbles.get(chatId) || []), ...rest])
+          log.info(`${chatId}：对方又开口了，剩下 ${rest.length} 句留到下一轮`)
+        } else log.debug(`${chatId}：对方又开口了，刚好没剩下什么`)
         break
       }
       const it = items[i]
       if (it.kind === 'text') {
         it.value = dropFaces(it.value, cfg.stickers?.faceChance, Math.random)
-        // 整条就只有一张小黄脸、又没中：这条不发了（兜底那句会补上）
-        if (!it.value.replace(/<[^>]*>/g, '').trim()) { log.debug(`${chatId}：这条只剩表情，跳过`); continue }
+        // 清理乱码（工具输出的十六进制串被照抄出来时）
+        it.value = stripHexRuns(it.value)
+        // 只剩一张小黄脸也算有内容：QQ 允许单独发一个系统表情，别整条丢掉。
+        // 真的一点都不剩（表情被抽掉、又没有字）才跳过，兜底那句会补上。
+        if (!it.value.replace(/<[^>]*>/g, '').trim() && !/<face:/i.test(it.value)) { log.debug(`${chatId}：这条什么都不剩，跳过`); continue }
       }
       const selected = it.replyTo ? refs[it.replyTo] : (!explicit && i === firstSendable ? opts.autoReply : null)
       const replyId = selected?.mid

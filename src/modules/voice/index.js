@@ -24,7 +24,11 @@ export default {
         try {
           const file = fileOf(await local.call('tts', { text }))
           if (file && existsSync(file)) return { file, engine: 'local' }
-        } catch (error) {}
+          // 脚本跑完没给出文件：和抛错一样是退回了内置引擎，但以前这里完全不留痕
+          api.log.warn(`本地语音没给出文件（${file || '空'}），改用内置引擎`)
+        } catch (error) {
+          api.log.warn(`本地语音没成（${error.message}），改用内置引擎`)
+        }
       }
       return textToSpeech(text, api.config().voice, api.log)
     }
