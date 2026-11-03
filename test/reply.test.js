@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { parseReply, stripArtifacts } from '../src/chat/reply.js'
+import { parseReply, splitLines, stripArtifacts } from '../src/chat/reply.js'
 
 const texts = (input) => parseReply(input).items.filter((i) => i.kind === 'text').map((i) => i.value)
 
@@ -41,4 +41,31 @@ test('协议标签照旧', () => {
 
 test('stripArtifacts 不碰尖括号里的正常文字', () => {
   assert.equal(stripArtifacts('她问我 1<2 是真的吗'), '她问我 1<2 是真的吗')
+})
+
+test('自然拆条跟着她自己打的停顿走：空格、空行各算一次换气', () => {
+  // 实测的模型输出：前面一串空行，句中用空格顿一下，句子之间又是空行
+  const raw = '\n\n\n\n哦 吃了啊 那我这白操心一场 <sticker:无语>\n\n\n吃的啥 有饭没'
+  assert.deepEqual(splitLines(raw, { oneMax: 10, max: 5 }), ['哦', '吃了啊', '那我这白操心一场 <sticker:无语>', '吃的啥', '有饭没'])
+})
+
+test('条数超过「最多几条」时合并相邻最短的两截，顺序不乱', () => {
+  assert.deepEqual(splitLines('哦 吃了啊 那我这白操心一场 吃的啥 有饭没', { oneMax: 8, max: 3 }), [
+    '哦 吃了啊',
+    '那我这白操心一场',
+    '吃的啥 有饭没',
+  ])
+})
+
+test('一句话在「一条最多几个字」以内就整条发', () => {
+  assert.deepEqual(splitLines('在在在 主人这一声声喂跟查岗似的', { oneMax: 24 }), ['在在在 主人这一声声喂跟查岗似的'])
+})
+
+test('没有停顿的一大段退回按标点切', () => {
+  const long = '今天下午啊，你说我爱吃白米饭，干脆姓白吧就叫白洛洛，我当场还嫌这名字怪来着'
+  assert.deepEqual(splitLines(long, { oneMax: 10, max: 3 }), [
+    '今天下午啊 你说我爱吃白米饭',
+    '干脆姓白吧就叫白洛洛',
+    '我当场还嫌这名字怪来着',
+  ])
 })

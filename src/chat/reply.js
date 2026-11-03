@@ -114,7 +114,6 @@ export function parseReply(text, opts = {}) {
 
 const MAX_BUBBLES = 3
 const ONE_MAX = 24 // 这段以内就一条（真人短回合一两句就是一条）
-const CHUNK = 60 // 要拆的时候每条大致多长
 
 const ENDS_PUNCT = /[，。！？!?…～~,.]$/
 const tidyEdge = (s) => String(s || '').replace(/^[\s，、,。.；;：:！!？?…～~]+/, '').replace(/[\s，、,]+$/, '')
@@ -130,7 +129,24 @@ function joinLines(lines) {
   return out
 }
 
-/** 切成「一口气的小段」：句末标点、逗号、以及模型自己打的空格都算一次换气。 */
+/**
+ * 按她自己打的停顿切：空格、换行、空行都算一次换气——她打几截，就发几条。
+ * 实测量到的输出长这样：`\n\n\n\n哦 吃了啊 那我这白操心一场 <sticker:无语>\n\n\n吃的啥 有饭没`，
+ * 以前会被并成一句再按字数硬切，拆出来的位置和她想说的节奏对不上。
+ */
+function modelBeats(t) {
+  const out = []
+  for (const piece of String(t || '').split(/\s+/)) {
+    const s = tidyEdge(piece)
+    if (!s) continue
+    // 只有标签的一截（<sticker:…>、<poke>）不算一次换气，跟着前面那句一起发
+    if (/^<[^>]+>$/.test(s) && out.length) out[out.length - 1] = `${out[out.length - 1]} ${s}`
+    else out.push(s)
+  }
+  return out
+}
+
+/** 旧规矩（她一口气写一大段、中间没打空格时兜底）：按标点切。 */
 const SPLIT_AT = /(?<=[。！？!?…～~])|\s+|(?<=[，、；])/
 function beats(t) {
   const out = []
@@ -150,34 +166,24 @@ function beats(t) {
   return out.filter(Boolean)
 }
 
-/** 把相邻两段接起来：都是英文单词时才补空格，中文直接接。 */
-const glue = (a, b) => (!a ? b : !b ? a : /[A-Za-z0-9]$/.test(a) && /^[A-Za-z0-9]/.test(b) ? `${a} ${b}` : a + b)
-
-/** 把几段并成 want 组，尽量让每组差不多长。 */
-function groupBeats(list, want) {
-  if (list.length <= 1) return [list.join('')]
-  const w = Math.min(want, list.length)
-  if (w <= 1) return [list.join('')]
-  const total = list.reduce((n, s) => n + s.length, 0)
-  const target = total / w
-  const out = []
-  let buf = ''
-  for (let i = 0; i < list.length; i++) {
-    buf = glue(buf, list[i])
-    const left = list.length - i - 1
-    const need = w - out.length - 1
-    if (out.length < w - 1 && (buf.length >= target * 0.9 || left <= need)) {
-      out.push(buf)
-      buf = ''
+/** 条数超了就合并相邻最短的两截（保留她原来的顺序和停顿位置）。并起来用空格隔开，读着还是一顿一顿的。 */
+function packBeats(list, max) {
+  const out = list.slice()
+  while (out.length > Math.max(1, max)) {
+    let at = 0
+    let size = Infinity
+    for (let i = 0; i + 1 < out.length; i++) {
+      const len = out[i].length + out[i + 1].length
+      if (len < size) { size = len; at = i }
     }
+    out.splice(at, 2, `${out[at]} ${out[at + 1]}`)
   }
-  if (buf) out.push(buf)
-  return out.map(tidyEdge).filter(Boolean)
+  return out
 }
 
 /**
  * 一段文字拆成几条气泡。
- * opts.split：'natural'（默认）按长度和句子拆；'one' 整轮一条；'line' 旧的按行拆。
+ * opts.split：'natural'（默认）按她自己打的停顿（空格、换行）拆，超过条数才合并；'one' 整轮一条；'line' 旧的按行拆。
  * 有代码块、像列表、或者很长（>240 字）就整段发。
  */
 export function splitLines(text, { max = MAX_BUBBLES, split = 'natural', oneMax = ONE_MAX, chance = 1, rand = Math.random } = {}) {
@@ -191,11 +197,13 @@ export function splitLines(text, { max = MAX_BUBBLES, split = 'natural', oneMax 
   if (lines.length > 1 && listy >= Math.ceil(lines.length / 2)) return [t]
   const one = joinLines(lines)
   if (!one) return []
-  const list = beats(one)
-  if (one.length <= oneMax || list.length < 2) return [one]
+  if (one.length <= oneMax) return [one]
+  // 她说几截就发几条：空格、换行、空行都是她自己打的停顿，不再按字数硬切
+  let list = /<voice>|<\/voice>/i.test(t) ? [] : modelBeats(t) // 语音那段里可能有空格，整段不动
+  if (list.length < 2 && one.length > oneMax * 2) list = beats(one) // 一大段没停顿：退回按标点切
+  if (list.length < 2) return [one]
   if (chance < 1 && rand() > chance) return [one]
-  const want = one.length > 90 ? 3 : 2
-  return groupBeats(list, Math.min(max, want))
+  return packBeats(list, max)
 }
 
 /** 文字气泡最多 max 条，多出来的并进最后一条（防止刷屏）。 */
