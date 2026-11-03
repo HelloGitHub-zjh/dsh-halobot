@@ -17,7 +17,7 @@ import { fetchImage, segmentBytes } from '../core/net.js'
 import { toMono16k } from '../voice/wav.js'
 import { mimeOf } from './inbound.js'
 import { redact } from '../core/redact.js'
-import { defaultModel, pickReasoningEffort, canSeeImages, modelVision, budgetBlocked } from '../core/llm.js'
+import { defaultModel, pickReasoningEffort, canSeeImages, modelVision, budgetBlocked, chargeBudget } from '../core/llm.js'
 import { shouldRotateSession, localSendable } from './guards.js'
 import { resolveChatModel } from './chat-model.js'
 import { createFaces, textToSegments, stripFaceTags, speakableText } from './faces.js'
@@ -1845,8 +1845,9 @@ export function createHub({ dsh, getConfig, log, onebot, stickers, tts, buildToo
    *  不带 key 走 `<name>` 那条（向后兼容，老会话继续复用），带 key 走 `<name>:<key>`，
    *  于是工作区里各自一条会话、进度互不阻塞，也不会把两种提示词混进同一段上下文。 */
   async function runSystemTurn(name, title, prompt, { timeoutMs = 180000, noTools = false, key: scope = '' } = {}) {
-    const blocked = budgetBlocked()
+    const blocked = budgetBlocked(name)
     if (blocked) throw new Error(blocked)
+    chargeBudget(name)
     const suffix = String(scope || '').trim().replace(/[^\w:-]/g, '').slice(0, 32)
     const chat = { chatId: suffix ? `system:${name}:${suffix}` : `system:${name}`, kind: 'system', title, noTools: !!noTools }
     const { agent, sessionId } = await agentFor(chat)

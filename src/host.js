@@ -21,13 +21,14 @@ import { createSnowLumaManager, DOWNLOAD_PAGE } from './snowluma/manager.js'
 import { createHub, workspaceDirOf } from './chat/hub.js'
 import { createLocal, fileOf, toImageBuffer } from './local/local.js'
 import { createGroupRoles } from './chat/group-roles.js'
-import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache, setUsageSink, setBudgetGate } from './core/llm.js'
+import { defaultModel, askModel, modelReasoning, modelVision, clearReasoningCache, clearVisionCache, setUsageSink, setBudgetGate, setChargeSink } from './core/llm.js'
 import { mimeOf } from './chat/inbound.js'
 import { findFfmpeg } from './core/img.js'
 import { statfsSync, writeFileSync as writeSync, unlinkSync as unlinkSync2 } from 'node:fs'
 import { backupStatus, makeBundle, applyBundle, PARTS, listAuto, saveAuto, readAuto, deleteAuto } from './features/backup.js'
 import { createUsage, dayKey } from './features/usage.js'
-import { dataDir, ensureDir } from './core/store.js'
+import { dataDir, ensureDir, readJson } from './core/store.js'
+import { findBrowser } from './core/cdp.js'
 import { createUpdateChecker, changelogSection } from './core/update.js'
 import { parseCommand, runCommand, createMutes, commandList } from './chat/commands.js'
 import { listPersonas, readPersona, savePersona, deletePersona, currentPersonaText, rulesText, seedPersonas } from './persona/personas.js'
@@ -280,9 +281,22 @@ export function apply(ctx) {
   // QQ 会话的 tokenUsage 增量 + 后台小任务自己报的 usage，一起按天记账，给面板概览那张卡用。
   // 采样很便宜（几条会话读一次投影/投影缓存），60 秒一次就够：面板每 5 秒拉 /state 时会顺带把增量记上。
   const usage = createUsage({ dsh: ctx, log: logger.child('usage'), getConfig, sessions: () => hub.sessions() })
-  setUsageSink((u) => usage.bump(u))
+  setUsageSink((u, tag) => usage.bump(u, tag || 'other'))
   // 后台调用预算：面板里能改，改了立刻生效（每次调用前读一次配置）
-  setBudgetGate(() => ({ calls: usage.todayCalls(), perDay: Number(getConfig().background?.perDay) || 0 }))
+  const CH_LABEL = { memory: '整理记忆', diary: '写日记', bili: '刷 B 站', douyin: '刷抖音', 'douyin-dm': '抖音私信', xhs: '刷小红书', heybox: '刷小黑盒', 'qzone-social': '逛空间', purpose: '目的引擎', 'purpose-nudge': '目的引擎', bridge: '连接测试', stickers: '表情起名', mood: '心情判断', talk: '主动搭话' }
+  setBudgetGate((tag) => {
+    const bg = getConfig().background || {}
+    const key = String(tag || 'other')
+    return {
+      calls: usage.todayCalls(),
+      perDay: Number(bg.perDay) || 0,
+      tag: key,
+      label: CH_LABEL[key] || (key === 'other' ? '其他后台任务' : key),
+      tagCalls: usage.channelCalls(key),
+      tagPerDay: Number((bg.channels || {})[key]) || 0,
+    }
+  })
+  setChargeSink((tag) => usage.spend(tag))
 
   // ---------- 面板接口的小工具 ----------
   const send = (res, code, body, type = 'application/json; charset=utf-8') => {
@@ -438,6 +452,7 @@ export function apply(ctx) {
     snowluma.dispose()
     setUsageSink(null)
     setBudgetGate(null)
+    setChargeSink(null)
     usage.save()
   }, 'halobot: 收尾')
 
@@ -758,6 +773,18 @@ export function apply(ctx) {
       const limitH = Math.max(1, Number(cfg.backup.everyHours) || 24) * 1.5
       add('backup', '自动备份', gapH >= 0 && gapH <= limitH, newest ? `${Math.round(gapH)} 小时前备份过` : '还没有备份', '点「现在备份一份」看看报什么错', gapH >= 0 && gapH <= limitH ? 'ok' : 'warn')
     }
+    // —— 小红书（开着才检查，没开就不添乱）——
+    if (cfg.xhs && cfg.xhs.enabled) {
+      const bx = findBrowser(cfg.xhs.browserPath || '')
+      add('xhs-browser', '小红书浏览器', Boolean(bx), bx || '没找到 Edge / Chrome', '在「小红书」页填浏览器路径，或装一个 Chrome')
+      const xs = readJson(join(dataDir(), 'xhs.json'), () => ({}))
+      const logged = Boolean(xs.account && xs.account.nickname)
+      add('xhs-login', '小红书登录', logged, logged ? `已登录：${xs.account.nickname}` : '还没扫码登录', '在「小红书」页点「扫码登录 / 检查」', logged ? 'ok' : 'warn')
+      const lastRun = Number(xs.lastRun) || 0
+      const hrs = lastRun ? (Date.now() - lastRun) / 3600_000 : -1
+      add('xhs-recent', '最近刷过小红书', hrs >= 0 && hrs <= 48, lastRun ? `${Math.round(hrs)} 小时前` : '还没刷过', '在「小红书」页点「现在刷一轮」', hrs >= 0 && hrs <= 48 ? 'ok' : 'warn')
+      if (xs.pauseDay) add('xhs-pause', '小红书被暂停', false, `今天停手：${xs.pauseReason || '风控'}`, '明天会自动恢复；反复出现就在面板把间隔调长')
+    }
     const fail = checks.filter((c) => !c.ok && c.level === 'err').length
     const warn = checks.filter((c) => c.level === 'warn').length
     return { ok: true, checks, fail, warn, at: Date.now(), summary: fail ? `${fail} 项要处理` : warn ? '能跑，但有几项要留意' : '全部正常' }
@@ -908,7 +935,7 @@ export function apply(ctx) {
       text.trim() ? `原文：\n${text}` : '',
     ].filter(Boolean).join('\n')
     try {
-      const out = String(await askModel(ctx, { cfg: getConfig(), system, text: ask, maxTokens: 1500, temperature: 0.6 }) || '')
+      const out = String(await askModel(ctx, { cfg: getConfig(), system, text: ask, maxTokens: 1500, temperature: 0.6, budget: 'talk' }) || '')
         .replace(/^```[a-z]*\n?|\n?```$/g, '').replace(new RegExp('^【' + title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '】\\s*'), '').trim()
       return out ? { ok: true, text: out } : { ok: false, message: '模型没给出内容，再试一次' }
     } catch (error) {
@@ -1078,7 +1105,7 @@ export function apply(ctx) {
     const b = await readBody(req)
     const t = Date.now()
     try {
-      const text = await askModel(ctx, { cfg: { model: { provider: b.provider, model: b.model } }, system: '只回复两个字：在呢', text: '在吗', maxTokens: 800 })
+      const text = await askModel(ctx, { cfg: { model: { provider: b.provider, model: b.model } }, system: '只回复两个字：在呢', text: '在吗', maxTokens: 800, budget: 'talk' })
       return { ok: true, ms: Date.now() - t, text: text.slice(0, 40) }
     } catch (error) {
       return { ok: false, ms: Date.now() - t, message: error.message }

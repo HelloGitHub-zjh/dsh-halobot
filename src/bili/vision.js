@@ -82,7 +82,7 @@ const SYSTEM = '你在看一个视频的若干张截图。只写画面上确实�
 /** 把几帧交给视觉模型，换一段画面描述。 */
 export async function describeFrames(dsh, { info, frames, cfg }) {
   const images = frames.map((f) => ({ data: f.toString('base64'), mediaType: 'image/jpeg' }))
-  const text = await askModel(dsh, {
+  const text = await askModel(dsh, { budget: 'bili',
     cfg,
     system: SYSTEM,
     text: `这些截图来自视频《${info.title}》（UP主 ${info.author || '?'}，时长 ${Math.round(Number(info.duration) || 0)} 秒），按时间先后排列，大致分布在全片 5%~95% 的位置。\n把它们当成「我看到了什么」如实记下来。`,

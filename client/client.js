@@ -540,6 +540,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       { id: 'song', label: '翻唱', flag: 'song.enabled' },
       { id: 'bili', label: 'B站', flag: 'bili.enabled' },
       { id: 'douyin', label: '抖音', flag: 'douyin.enabled' },
+      { id: 'xhs', label: '小红书', flag: 'xhs.enabled' },
       { id: 'heybox', label: '小黑盒', flag: 'heybox.enabled' },
       { id: 'local', label: '本地接口' },
       { id: 'modules', label: '扩展' },
@@ -547,7 +548,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       { id: 'logs', label: '日志' },
     ]
     // 内置标签页属于哪个模块：模块都没在跑就不显示这一页
-    const TAB_MODS = { voice: ['voice'], stickers: ['stickers'], imagegen: ['imagegen'], diary: ['diary', 'qzone-social'], speakup: ['speakup', 'purpose'], mood: ['mood'], memory: ['memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], heybox: ['heybox'] }
+    const TAB_MODS = { voice: ['voice'], stickers: ['stickers'], imagegen: ['imagegen'], diary: ['diary', 'qzone-social'], speakup: ['speakup', 'purpose'], mood: ['mood'], memory: ['memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], xhs: ['xhs'], heybox: ['heybox'] }
     const modOn = (st, id) => (st.modules || []).some((m) => m.id === id && m.running)
 
     // 两层导航：上面一排是分组，下面一排是这组里的页面；每组记住上次看的那页，Alt+K 查找功能
@@ -556,7 +557,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       { id: 'home', label: '概览', icon: 'M3 10.5 12 3l9 7.5M5.5 9v11.5h13V9M10 20.5v-6h4v6', tabs: ['overview', 'stats'] },
       { id: 'self', label: '人设', icon: 'M12 12.5a4.25 4.25 0 1 0 0-8.5 4.25 4.25 0 0 0 0 8.5zM4.5 20.5c.9-3.6 3.9-5.5 7.5-5.5s6.6 1.9 7.5 5.5', tabs: ['persona', 'group', 'sessions', 'speakup', 'mood', 'memory'] },
       { id: 'express', label: '表达', icon: 'M20.5 11.5a8 8 0 0 1-11.7 7.1L4 20l1.4-4.4A8 8 0 1 1 20.5 11.5zM9 13.2s1.1 1.5 3 1.5 3-1.5 3-1.5M9.5 9.6h.01M14.5 9.6h.01', tabs: ['voice', 'stickers', 'imagegen', 'song'] },
-      { id: 'platform', label: '平台', icon: 'M3.5 6.5h17v11h-17zM10.5 9.8v4.4l3.8-2.2z', tabs: ['diary', 'bili', 'douyin', 'heybox'] },
+      { id: 'platform', label: '平台', icon: 'M3.5 6.5h17v11h-17zM10.5 9.8v4.4l3.8-2.2z', tabs: ['diary', 'bili', 'douyin', 'xhs', 'heybox'] },
       { id: 'system', label: '系统', icon: 'M4 7h9M17 7h3M4 12h3M11 12h9M4 17h11M19 17h1M15 5v4M9 10v4M17 15v4', tabs: ['connect', 'model', 'access', 'local', 'modules', 'backup', 'logs'] },
     ]
     // 自己写的模块：名字像逛平台的放「平台」，其余放「系统」（排在「日志」前面）
@@ -882,6 +883,99 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     }
 
     /** 一键自检：开关、网关、登录号、最近收消息……哪一环断了直接说。 */
+
+    /** 小红书：登录、刷什么、怎么刷、怎么互动、学到了什么。 */
+    function Xhs({ draft, setDraft, toast }) {
+      const f = useField(draft, setDraft)
+      const [s, setS] = useState(null)
+      const [busy, setBusy] = useState('')
+      const load = () => get('/xhs/state').then((r) => setS(r)).catch(() => {})
+      useEffect(() => { load() }, [])
+      const d = draft.xhs || {}
+      const on = d.enabled === true
+      const act = async (label, fn) => {
+        setBusy(label)
+        try {
+          const r = await fn()
+          if (r && r.ok === false) toast(r.message || '没成功')
+          else if (r && r.message) toast(r.message)
+          load()
+        } catch (e) { toast(e.message || '没成功') } finally { setBusy('') }
+      }
+      const pgt = usePager((s && s.topics) || [])
+      const pgh = usePager((s && s.history) || [])
+      const KIND = { see: '看了', learn: '学到', like: '点赞', comment: '评论', share: '分享', skip: '跳过', ad: '广告跳过', review: '反刍', empty: '空手', fail: '没跑成', budget: '额度用完', pause: '停手' }
+      const login = (s && s.login) || null
+      return h('div', { className: 'ab-grid' },
+        h('div', { className: 'ab-metrics' },
+          h('div', { className: 'ab-metric', key: 'a' }, h('div', { className: 'n' }, (s && s.watched) || 0), h('div', { className: 'l' }, '看过帖子')),
+          h('div', { className: 'ab-metric', key: 'b' }, h('div', { className: 'n' }, (s && s.knowledge) || 0), h('div', { className: 'l' }, '学到的条目')),
+          h('div', { className: 'ab-metric', key: 'c' }, h('div', { className: 'n' }, (s && s.topics) ? (s.topics.length + '') : '0'), h('div', { className: 'l' }, '话题')),
+          h('div', { className: 'ab-metric', key: 'd' }, h('div', { className: 'n' }, (s && (s.like || 0)) + ' / ' + (d.caps && d.caps.like) || '0'), h('div', { className: 'l' }, '今天点赞'))),
+
+        h(Card, { title: '账号', right: f.sw('xhs.enabled'), desc: '她用自己的小红书账号刷。第一次要先扫码登录一次（会弹一个独立的浏览器窗口，登录完关掉就行；以后自动用这份登录）。' },
+          h(Row, { label: '登录状态', hint: login ? `已登录：${login.nickname}` : (s && s.paused) ? `今天暂停：${s.pauseReason || ''}` : '还没登录' },
+            h(Btn, { kind: 'ghost', disabled: busy === 'login', onClick: () => act('login', () => post('/xhs/login', {})) }, busy === 'login' ? '打开浏览器…' : '扫码登录 / 检查')),
+          h(Row, { label: '浏览器', hint: '留空 = 自动找 Edge，找不到再找 Chrome / Chromium' },
+            h('input', { className: 'ab-input', value: (draft.xhs && draft.xhs.browserPath) || '', placeholder: '留空自动找', onChange: (e) => setDraft(setPath(draft, 'xhs.browserPath', e.target.value)) }))),
+
+        h('div', { className: 'ab-section-title' }, '刷什么'),
+        h(Card, { title: '她刷什么', desc: '留空就按她的兴趣（聊天页「兴趣」+ 记忆里的事）自己想关键词。' },
+          h(Row, { label: '固定搜的词', hint: '一行一个，加上兴趣一起用' }, f.list('xhs.keywords', { placeholder: '家居收纳\n梅雨季' })),
+          h(Row, { label: '点赞数门槛', hint: '低于这个数的不看' }, f.num('xhs.minLikes', { min: 0, max: 100000 })),
+          h(Row, { label: '只要多少天内', hint: '发布时间太久的不看' }, f.num('xhs.maxAgeDays', { min: 1, max: 365 })),
+          h(Row, { label: '探索位置', hint: '每轮留一个位置给不相关的话题，别老刷同一类' }, f.percent('xhs.exploreChance'))),
+
+        h('div', { className: 'ab-section-title' }, '怎么刷'),
+        h(Card, { title: '节奏', desc: '默认不自动刷：先在面板手动刷一两轮，看着没问题再开定时。' },
+          h(Row, { label: '定时自己刷' }, f.sw('xhs.autoBrowse')),
+          h(Row, { label: '隔几小时一轮' }, f.num('xhs.intervalHours', { min: 1, max: 72 })),
+          h(Row, { label: '每天最多几轮' }, f.num('xhs.maxRunsPerDay', { min: 1, max: 12 })),
+          h(Row, { label: '一轮看几篇' }, f.num('xhs.perRun', { min: 1, max: 10 })),
+          h(Row, { label: '每篇停留', hint: '秒数区间，随机取' }, f.num('xhs.dwellMin', { min: 2, max: 120 }), f.num('xhs.dwellMax', { min: 2, max: 300 })),
+          h(Row, { label: '不学广告', hint: '开着：看着像广告 / 带货 / 引流（优惠券、链接在评论区、加V 私信、团购代购这类）的帖子，不学、不评、不分享、也不点赞，只在记录里留一行「广告跳过」' }, f.sw('xhs.skipAds')),
+          h(Row, { label: '刷完收起浏览器', hint: '开着：刷完回到小红书首页并把窗口挪出屏幕；关着：停在最后一篇上，方便你看她刷了什么' }, f.sw('xhs.hideAfterRun')),
+          h('div', { className: 'ab-row' },
+            h(Btn, { disabled: busy === 'run' || !on, onClick: () => act('run', () => post('/xhs/run', {})) }, busy === 'run' ? '正在刷…' : '现在刷一轮'),
+            h(Btn, { kind: 'ghost', disabled: busy === 'review', onClick: () => act('review', () => post('/xhs/review', {})) }, busy === 'review' ? '反刍中…' : '现在反刍一次'))),
+
+        h('div', { className: 'ab-section-title' }, '怎么互动'),
+        h(Card, { title: '点赞、评论、分享', desc: '小红书比抖音敏感，默认只点赞、不评论，写操作之间至少隔一段时间。' },
+          h(Row, { label: '允许点赞' }, f.sw('xhs.like')),
+          h(Row, { label: '允许评论', hint: '默认关。开着也只在能说到具体内容时才评' }, f.sw('xhs.comment')),
+          h(Row, { label: '评论至少几个字' }, f.num('xhs.commentMinChars', { min: 2, max: 60 })),
+          h(Row, { label: '分享给主人' }, f.sw('xhs.shareToOwner')),
+          h(Row, { label: '每天最多', hint: '点赞 / 评论 / 分享' }, f.num('xhs.caps.like', { min: 0, max: 200 }), f.num('xhs.caps.comment', { min: 0, max: 50 }), f.num('xhs.caps.share', { min: 0, max: 50 })),
+          h(Row, { label: '写操作间隔', hint: '秒；两次点赞/评论之间至少隔这么久' }, f.num('xhs.gate.minWriteGapSec', { min: 0, max: 600 })),
+          h(Row, { label: '把学到的东西记下来', hint: '每篇的「学到了什么」进记忆，聊天时能想起来' }, f.sw('xhs.learn')),
+          h(Row, { label: '定期反刍', hint: '把最近学到的串成一段写进记忆' }, f.sw('xhs.review'), f.num('xhs.reviewEveryDays', { min: 1, max: 60 }))),
+
+        h('div', { className: 'ab-section-title' }, '学到了什么'),
+        h(Card, { title: '她从小红书学到的', desc: '按话题聚合。想让她在聊天里用得上，靠的是「记下来」那条链路。' },
+          (s && s.topics && s.topics.length)
+            ? h('div', { style: { overflowX: 'auto' } }, h('table', { className: 'ab-table' },
+              h('thead', null, h('tr', null, ['话题', '见过几次', '最近', '她记下的'].map((t) => h('th', { key: t }, t)))),
+              h('tbody', null, pgt.rows.map((t) => h('tr', { key: t.name },
+                h('td', null, t.name),
+                h('td', null, t.count),
+                h('td', null, timeAgo(t.lastAt)),
+                h('td', null, h(Clip, { text: t.summary || '—', n: 40 })))))))
+            : h(Empty, { text: '还没学到什么 —— 刷几轮就有了' }),
+          h(Pager, { page: pgt.page, total: pgt.total, setPage: pgt.setPage, count: (s && s.topics && s.topics.length) || 0 })),
+
+        h('div', { className: 'ab-section-title' }, '记录'),
+        h(Card, { title: '她刷过的', desc: '最近 40 条动作，最新的在上面。' },
+          (s && s.history && s.history.length)
+            ? h('div', { style: { overflowX: 'auto' } }, h('table', { className: 'ab-table' },
+              h('thead', null, h('tr', null, ['时间', '做了什么', '内容'].map((t) => h('th', { key: t }, t)))),
+              h('tbody', null, pgh.rows.map((x, i) => h('tr', { key: x.at + ':' + i },
+                h('td', null, timeAgo(x.at)),
+                h('td', null, KIND[x.kind] || x.kind || ''),
+                h('td', null, h(Clip, { text: x.take || x.title || x.text || x.note || x.why || x.id || '', n: 60 })))))))
+            : h(Empty, { text: '还没刷过' }),
+          h(Pager, { page: pgh.page, total: pgh.total, setPage: pgh.setPage, count: (s && s.history && s.history.length) || 0 })))
+    }
+
     function SelfCheck({ toast }) {
       const [data, setData] = useState(null)
       const [busy, setBusy] = useState(false)
@@ -1225,6 +1319,10 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
         row('douyinComment', '抖音评论', '有人让她去某个视频下评论；关掉后她自己刷的时候也不评论。'),
         row('douyinShareOwner', '分享抖音给主人', '刷到好玩的视频在 QQ 私聊里发给你（她的话 + 链接）。'),
         row('douyinDm', '主动发抖音私信', '主人明确让她给某个人发私信时（主页链接或抖音号）；列表里没有会话会从对方主页发起。默认仅主人私聊。'),
+        row('xhsBrowse', '刷小红书', '让她去刷小红书（xhs_browse）、查刷过什么（xhs_recent）、查学到的（xhs_learn）。定时自己刷不受这项限制。'),
+        row('xhsLike', '小红书点赞', '有人让她给某篇笔记点赞；关掉后她自己刷的时候也不点赞。'),
+        row('xhsComment', '小红书评论', '有人让她去某篇笔记下评论；关掉后她自己刷的时候也不评论。'),
+        row('xhsShareOwner', '分享小红书给主人', '刷到有意思的笔记在 QQ 私聊里发给你（她的话 + 链接）。'),
         row('heyboxBrowse', '逛小黑盒 / 看帖子', '让她翻信息流（heybox_feed）、读帖子正文和热评（heybox_watch）、看热榜和搜帖子（heybox_hot / heybox_search / heybox_topics）。定时自己逛不受这项限制。'),
         row('heyboxLike', '小黑盒点赞', '有人让她给某个帖子点赞；关掉后她自己逛的时候也不点赞。'),
         row('heyboxComment', '小黑盒评论', '有人让她去某个帖子下评论；关掉后她自己逛的时候也不评论。'),
@@ -1992,6 +2090,8 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
     }
 
     /** 记忆页：人物卡片墙、小档案、相处经验、说话方式、记忆库、召回日志。 */
+    const BG_CHANNELS = [['memory', '整理记忆'], ['diary', '写日记'], ['bili', '刷 B 站'], ['douyin', '刷抖音'], ['xhs', '刷小红书'], ['heybox', '刷小黑盒'], ['qzone-social', '逛空间'], ['purpose', '目的引擎'], ['stickers', '表情起名'], ['mood', '心情判断'], ['talk', '主动搭话']]
+
     function MemoryPage({ st, draft, setDraft, toast }) {
       const f = useField(draft, setDraft)
       const [mem, setMem] = useState(null)
@@ -2018,6 +2118,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const last = st.memory && st.memory.lastConsolidate
       const dayCalls = (st.usage && Number(st.usage.calls)) || 0
       const perDay = Number(draft.background && draft.background.perDay) || 0
+      const chUsed = (st.usage && st.usage.channels) || {}
       const suggest = Math.max(2, times.length + 3)
       const metric = (n, l) => h('div', { className: 'ab-metric', key: l },
         h('div', { className: 'n' }, n), h('div', { className: 'l' }, l))
@@ -2072,13 +2173,19 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
             times.length < 4 ? h(Btn, { small: true, kind: 'ghost', onClick: addTime }, '＋ 加一次') : null),
           h(Row, { label: '现在补一次', hint: '不用等时间点，立刻把新聊天整理一遍' },
             h(Btn, { small: true, onClick: async () => { toast('正在整理，可能要一两分钟…'); const r = await post('/memory/extract', {}); toast(r.message); load(); loadIns() } }, '立即整理'))),
-        h(Card, { title: '后台调用', desc: '整理、写日记、刷 B 站、给表情起名、判断心情都要问模型，这些都不在聊天那一轮里。这里给每天设一个上限，超了就顺延到明天——聊天永远不会被后台任务挤掉。' },
+        h(Card, { title: '后台调用（每个渠道单独一份）', desc: '整理、写日记、刷 B 站 / 抖音 / 小红书 / 小黑盒、给表情起名、判断心情都要问模型，这些都不在聊天那一轮里。每个渠道单独一份每日额度，谁先用完谁停，互不挤占；聊天永远不受影响，超了顺延到明天。' },
           h('div', { className: 'ab-kv' },
-            h('div', null, h('span', null, '今天已经问了'), h('b', null, dayCalls + ' 次')),
-            h('div', null, h('span', null, '每天最多'), h('b', null, perDay > 0 ? perDay + ' 次' : '不限')),
-            h('div', null, h('span', null, '按现在的设置建议至少'), h('b', null, suggest + ' 次'))),
-          h(Row, { label: '每天最多几次', hint: '0 = 不限。整理 ' + times.length + ' 次至少用 ' + times.length + ' 次调用，再留 3 次给日记、B 站和表情起名；改完立即生效' },
-            f.num('background.perDay', { min: 0, max: 200 }))),
+            h('div', null, h('span', null, '今天合计'), h('b', null, dayCalls + ' 次')),
+            h('div', null, h('span', null, '总上限'), h('b', null, perDay > 0 ? perDay + ' 次' : '不限'))),
+          h('div', { style: { overflowX: 'auto' } },
+            h('table', { className: 'ab-table' },
+              h('thead', null, h('tr', null, ['渠道', '今天已用', '每天最多', ''].map((x, i) => h('th', { key: i }, x)))),
+              h('tbody', null, BG_CHANNELS.map(([key, label]) => h('tr', { key },
+                h('td', null, label),
+                h('td', null, String((chUsed && chUsed[key]) || 0)),
+                h('td', null, f.num('background.channels.' + key, { min: 0, max: 200 })),
+                h('td', { className: 'ab-muted' }, '0 = 不限')))))),
+          h(Row, { label: '总上限', hint: '所有渠道加起来的保险丝，0 = 不限；改完立即生效' }, f.num('background.perDay', { min: 0, max: 500 }))),
 
         // ④ 读取：每轮怎么翻记忆
         h('div', { className: 'ab-section-title' }, '她怎么想起来'),
@@ -3890,7 +3997,7 @@ body[data-ds-dark-theme] .ab-root,.ab-root.ab-dark{--ab-shadow:0 1px 2px rgba(0,
       const curTab = tabs.find((t) => t.id === tab) || tabs[0]
       const body = curTab.ext ? ExtPage : {
         overview: Overview, stats: Stats, sessions: Sessions, connect: Connect, persona: Persona, access: Access, group: Group, model: Model, voice: Voice,
-        stickers: Stickers, imagegen: ImageGen, diary: Diary, speakup: SpeakUp, mood: MoodPage, memory: MemoryPage, song: Song, bili: Bili, douyin: Douyin, heybox: Heybox, local: LocalApi, modules: Modules, backup: Backup, logs: Logs,
+        stickers: Stickers, imagegen: ImageGen, diary: Diary, speakup: SpeakUp, mood: MoodPage, memory: MemoryPage, song: Song, bili: Bili, douyin: Douyin, xhs: Xhs, heybox: Heybox, local: LocalApi, modules: Modules, backup: Backup, logs: Logs,
       }[curTab.id] || Overview
       // 哪些标签有没保存的改动
       const TAB_KEYS = { connect: ['snowluma', 'botQQ'], backup: ['backup'], access: ['ownerQQ', 'ownerName', 'ownerLevel', 'longTasks', 'profilePerms', 'allow'], group: ['group', 'merge', 'titleFilter'], model: ['model', 'chatModels'], voice: ['voice'], stickers: ['stickers'], imagegen: ['imageGen'], diary: ['diary', 'qzoneSocial'], speakup: ['speakUp'], mood: ['mood'], memory: ['memory'], song: ['song'], bili: ['bili'], douyin: ['douyin'], heybox: ['heybox'], local: ['local'] }

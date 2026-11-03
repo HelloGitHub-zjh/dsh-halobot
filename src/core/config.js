@@ -14,7 +14,7 @@ export const DEFAULTS = {
   ownerQQ: '', // 主人 QQ 号（向导里填）
   ownerName: '主人',
   ownerLevel: 'full', // full | social | chat
-  profilePerms: { qqNickname: 'owner', qqSignature: 'owner', qqAvatar: 'owner', biliSign: 'owner', biliAvatar: 'owner', qqFriendRequest: 'owner', whitelist: 'owner', douyinBrowse: 'owner', douyinLike: 'owner', douyinComment: 'owner', douyinShareOwner: 'owner', douyinDm: 'owner' }, // 改资料类操作（含抖音浏览 / 点赞 / 评论 / 分享）的权限：off 关 / owner 仅主人私聊 / all 所有人。抖音项默认仅主人，总开关默认关
+  profilePerms: { qqNickname: 'owner', qqSignature: 'owner', qqAvatar: 'owner', biliSign: 'owner', biliAvatar: 'owner', qqFriendRequest: 'owner', whitelist: 'owner', douyinBrowse: 'owner', douyinLike: 'owner', douyinComment: 'owner', douyinShareOwner: 'owner', douyinDm: 'owner', xhsBrowse: 'owner', xhsLike: 'owner', xhsComment: 'owner', xhsShareOwner: 'owner' }, // 改资料类操作（含抖音浏览 / 点赞 / 评论 / 分享）的权限：off 关 / owner 仅主人私聊 / all 所有人。抖音项默认仅主人，总开关默认关
   longTasks: false, // 长任务模式：主人私聊（完整权限）额外挂 dsh-tool-jobs + dsh-tool-schedule，会多一点工具定义、稍慢
   allow: { private: [], groups: [] }, // 主人永远能私聊，不用写进白名单
   // 用什么接 QQ：snowluma = 插件帮你管 SnowLuma（Windows）；onebot = 接你已有的 OneBot v11 机器人（NapCat、LLOneBot、Lagrange、Docker 里的 SnowLuma……），
@@ -146,7 +146,11 @@ export const DEFAULTS = {
   // 后台调用预算：每天最多问几次模型（整理记忆、写日记、刷 B 站这些都不走聊天那一轮），0 = 不限
   // 后台调用预算：整理记忆、写日记、刷 B 站、给表情起名、心情判定都算在内。
   // 默认 20：一天两次整理 + 日记 + 少量顺带调用刚好够；调小会看到「今天的后台调用用完了」。
-  background: { perDay: 20 },
+  // 后台调用：每个渠道一份每日额度（0 = 不限），perDay 是总量保险丝。
+  background: {
+    perDay: 90,
+    channels: { memory: 14, diary: 4, bili: 4, douyin: 4, 'douyin-dm': 3, xhs: 6, heybox: 3, 'qzone-social': 3, purpose: 6, stickers: 8, mood: 16, talk: 6 },
+  },
   // 本地接口：数据目录 local/ 里的脚本接管这几项（文件要在、开关要开）
   local: { tts: false, image: false, song: false, asr: false },
   bili: {
@@ -200,6 +204,36 @@ export const DEFAULTS = {
       maxWritesPerDay: 40, // 点赞 + 评论合计上限
       minWriteGapSec: 20, // 两次点赞 / 评论之间至少隔这么多秒
       newAccountDays: 3, // 首次登录起这么多天内，上限都减半
+    },
+  },
+  // 刷小红书：专用浏览器（独立登录资料，不碰你平时的浏览器），数据从页面里读（不碰接口签名）。
+  // 浏览 / 点赞 / 评论 / 分享的权限在 profilePerms.xhs*，默认仅主人。
+  xhs: {
+    enabled: false, // 总开关：关着的时候工具不挂、定时不跑
+    autoBrowse: false, // 定时自己去刷（默认关，先在面板里手动刷一次看看）
+    intervalHours: 6, // 隔几小时刷一轮
+    maxRunsPerDay: 2, // 每天最多刷几轮
+    perRun: 4, // 一轮看几篇
+    dwellMin: 6, // 每篇停留的秒数（随机取一个）
+    dwellMax: 25,
+    minLikes: 100, // 低于这个点赞数的帖子不看
+    maxAgeDays: 30, // 发布时间超过这么多天的不看
+    keywords: [], // 想在面板里固定搜的词（留空就只用她的兴趣）
+    exploreChance: 0.2, // 每轮留一个位置给不相关的话题
+    learn: true, // 把「从这篇学到了什么」记进记忆和知识库
+    skipAds: true, // 广告 / 推销 / 引流的帖子不学、不评、不分享、不点赞
+    like: true, // 允许点赞
+    comment: false, // 允许发评论（默认关）
+    commentMinChars: 6, // 评论至少几个字
+    shareToOwner: true, // 好玩的分享到 QQ 私聊
+    hideAfterRun: true, // 刷完把这个浏览器窗口收起来（切到空白页再挪出屏幕）
+    review: false, // 定期把学到的东西串成一段写进记忆（「反刍」）
+    reviewEveryDays: 7, // 反刍间隔：每几天一次（1–60）
+    browserPath: '', // 留空 = 自动找 Edge（找不到再找 Chrome / Chromium）
+    caps: { like: 20, comment: 2, share: 3 }, // 每天上限
+    gate: {
+      maxWritesPerDay: 25, // 点赞 + 评论合计上限
+      minWriteGapSec: 45, // 两次写操作之间至少隔这么多秒（小红书比抖音敏感）
     },
   },
   // 刷小黑盒：用主人的账号逛游戏社区（读多写少）。点赞 / 评论 / 发帖各项权限在 profilePerms.heybox*。
@@ -429,6 +463,34 @@ export function normalize(raw) {
   b.maxCommentsPerDay = num(b.maxCommentsPerDay, 3, 0, 50)
   b.maxRepliesPerDay = num(b.maxRepliesPerDay, 6, 0, 100)
   b.keywords = (Array.isArray(b.keywords) ? b.keywords : String(b.keywords || '').split(/[\n,，]+/)).map((x) => String(x).trim()).filter(Boolean).slice(0, 30)
+  if (!isObj(c.xhs)) c.xhs = {}
+  const x = c.xhs
+  x.enabled = bool(x.enabled, false)
+  x.autoBrowse = bool(x.autoBrowse, false)
+  x.intervalHours = num(x.intervalHours, 6, 1, 72)
+  x.maxRunsPerDay = num(x.maxRunsPerDay, 2, 0, 12)
+  x.perRun = num(x.perRun, 4, 1, 10)
+  x.dwellMin = num(x.dwellMin, 6, 2, 120)
+  x.dwellMax = Math.max(x.dwellMin, num(x.dwellMax, 25, 2, 300))
+  x.minLikes = num(x.minLikes, 100, 0, 1e6)
+  x.maxAgeDays = num(x.maxAgeDays, 30, 1, 3650)
+  x.keywords = (Array.isArray(x.keywords) ? x.keywords : String(x.keywords || '').split(/[\n,，]+/)).map((v) => String(v).trim()).filter(Boolean).slice(0, 20)
+  x.exploreChance = num(x.exploreChance, 0.2, 0, 1)
+  x.learn = bool(x.learn, true)
+  x.skipAds = bool(x.skipAds, true)
+  x.like = bool(x.like, true)
+  x.comment = bool(x.comment, false)
+  x.commentMinChars = num(x.commentMinChars, 6, 2, 60)
+  x.shareToOwner = bool(x.shareToOwner, true)
+  x.hideAfterRun = bool(x.hideAfterRun, true)
+  x.review = bool(x.review, false)
+  x.reviewEveryDays = num(x.reviewEveryDays, 7, 1, 60)
+  x.browserPath = String(x.browserPath || '').trim()
+  if (!isObj(x.caps)) x.caps = {}
+  x.caps = { like: num(x.caps.like, 20, 0, 200), comment: num(x.caps.comment, 2, 0, 50), share: num(x.caps.share, 3, 0, 50) }
+  if (!isObj(x.gate)) x.gate = {}
+  x.gate.maxWritesPerDay = num(x.gate.maxWritesPerDay, 25, 0, 300)
+  x.gate.minWriteGapSec = num(x.gate.minWriteGapSec, 45, 0, 600)
   const d = c.douyin
   d.enabled = bool(d.enabled, false)
   d.autoBrowse = bool(d.autoBrowse, true)
@@ -474,8 +536,11 @@ export function normalize(raw) {
   c.memory.privateInGroup = bool(c.memory.privateInGroup, false)
   // 别名：一行一组「主人=小郑」，检索时互相替换，少漏明显相关的记忆
   c.memory.aliases = Array.isArray(c.memory.aliases) ? c.memory.aliases.map((x) => String(x || '').trim().slice(0, 40)).filter(Boolean).slice(0, 40) : []
-  if (!isObj(c.background)) c.background = { perDay: 20 }
-  c.background.perDay = num(c.background.perDay, 20, 0, 200)
+  if (!isObj(c.background)) c.background = { perDay: 80 }
+  c.background.perDay = num(c.background.perDay, 90, 0, 500)
+  const defCh = { memory: 14, diary: 4, bili: 4, douyin: 4, 'douyin-dm': 3, xhs: 6, heybox: 3, 'qzone-social': 3, purpose: 6, stickers: 8, mood: 16, talk: 6 }
+  if (!isObj(c.background.channels)) c.background.channels = { ...defCh }
+  for (const [k, v] of Object.entries(defCh)) c.background.channels[k] = num(c.background.channels[k], v, 0, 200)
   g.interests = (Array.isArray(g.interests) ? g.interests : String(g.interests || '').split(/[\s,，]+/)).map((s) => String(s).trim()).filter(Boolean)
   g.minRelevance = num(g.minRelevance, 0.25, 0, 1)
   c.merge.enabled = bool(c.merge.enabled, true)

@@ -16,6 +16,7 @@ import song from './song/index.js'
 import profile from './profile/index.js'
 import contacts from './contacts/index.js'
 import douyin from './douyin/index.js'
+import xhs from './xhs/index.js'
 import heybox from './heybox/index.js'
 
-export const BUILTINS = [stickers, voice, mood, memory, qqTools, groupAdmin, imagegen, diary, qzoneSocial, speakup, purpose, bili, song, profile, contacts, douyin, heybox]
+export const BUILTINS = [stickers, voice, mood, memory, qqTools, groupAdmin, imagegen, diary, qzoneSocial, speakup, purpose, bili, song, profile, contacts, douyin, xhs, heybox]

@@ -12,24 +12,37 @@ export function setUsageSink (fn) {
 // 后台调用预算：每天最多问几次模型（0 = 不限）。计数来自用量账本，超了在这里就拦下，
 // 免得整理记忆、写日记这些把额度悄悄烧光，聊天那一轮反而没得用。
 let budgetGate = null
+let chargeSink = null
 export function setBudgetGate (fn) {
   budgetGate = typeof fn === 'function' ? fn : null
 }
 
-/** 后台预算是否已经用完；用完返回一句给人看的话，没用完返回 null（系统回合也要过这一关）。 */
-export function budgetBlocked () {
-  return overBudget()
+/** 记一笔「这个渠道开了一轮」（系统回合不走 askModel，由宿主调用这里入账）。 */
+export function setChargeSink (fn) {
+  chargeSink = typeof fn === 'function' ? fn : null
 }
 
-function overBudget () {
+export function chargeBudget (tag = 'other') {
+  try { chargeSink?.(String(tag || 'other')) } catch (error) { /* 记账失败不影响功能 */ }
+}
+
+/** 后台预算是否已经用完；用完返回一句给人看的话，没用完返回 null。tag = 哪个渠道。 */
+export function budgetBlocked (tag = '') {
+  return overBudget(tag)
+}
+
+function overBudget (tag = '') {
   if (!budgetGate) return null
   let g = null
-  try { g = budgetGate() } catch (error) { return null }
+  try { g = budgetGate(String(tag || '')) } catch (error) { return null }
+  const label = (g && g.label) || '后台'
+  const tagPer = Number(g && g.tagPerDay) || 0
+  const tagUsed = Number(g && g.tagCalls) || 0
+  if (tagPer > 0 && tagUsed >= tagPer) return `今天「${label}」的额度用完了（${tagUsed}/${tagPer} 次），剩下的等明天`
   const per = Number(g && g.perDay) || 0
-  if (per <= 0) return null
-  const used = Number(g.calls) || 0
-  if (used < per) return null
-  return `今天的后台调用用完了（${used}/${per} 次），剩下的等明天`
+  const used = Number(g && g.calls) || 0
+  if (per > 0 && used >= per) return `今天的后台调用总上限用完了（${used}/${per} 次），剩下的等明天`
+  return null
 }
 
 export function defaultModel(dsh, cfg) {
@@ -169,7 +182,7 @@ async function runStream (llm, params) {
     return out.trim()
   } finally {
     if (usage) {
-      try { usageSink?.(usage) } catch (error) {}
+      try { usageSink?.(usage, String(o.budget || 'other')) } catch (error) {}
     }
   }
 }
@@ -181,7 +194,7 @@ async function runStream (llm, params) {
  */
 export async function askModel (dsh, o) {
   if (!o.ignoreBudget) {
-    const blocked = overBudget()
+    const blocked = overBudget(o.budget || 'other')
     if (blocked) throw new Error(blocked)
   }
   const llm = dsh.llm || dsh.get('llm')

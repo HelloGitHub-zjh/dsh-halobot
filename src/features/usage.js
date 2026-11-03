@@ -165,7 +165,7 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
   let state = {
     v: 2,
     day: dayKey(),
-    today: { chat: split(), background: split(), calls: 0 },
+    today: { chat: split(), background: split(), calls: 0, byChannel: {} },
     last: {}, // sessionId → 上次看到的累计（增量法用）
     days: {}, // 'YYYY-MM-DD' → { chat: split(), background: split(), calls }
   }
@@ -188,6 +188,7 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
     if (j.days && typeof j.days === 'object') state.days = j.days
     if (typeof j.day === 'string') state.day = j.day
     if (typeof state.today.calls !== 'number') state.today.calls = 0
+    if (!state.today.byChannel || typeof state.today.byChannel !== 'object') state.today.byChannel = {}
   }
   load()
 
@@ -212,7 +213,7 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
     const keys = Object.keys(state.days).sort()
     for (const old of keys.slice(0, Math.max(0, keys.length - KEEP_DAYS))) delete state.days[old]
     state.day = k
-    state.today = { chat: split(), background: split(), calls: 0 }
+    state.today = { chat: split(), background: split(), calls: 0, byChannel: {} }
     dirty = true
     return true
   }
@@ -303,8 +304,8 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
     return cached
   }
 
-  /** 后台小任务的一次调用（llm.js 报过来的，字段是 DSH 的 usage：inputTokens 已经是未命中部分）。 */
-  function bump(usage) {
+  /** 后台小任务的一次调用（llm.js 报过来的，字段是 DSH 的 usage：inputTokens 已经是未命中部分）。tag = 哪个渠道花的。 */
+  function bump(usage, tag = 'other') {
     if (!usage) return
     rollDay()
     const { holidays, workdays } = calendar()
@@ -318,9 +319,25 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
     if (zero(d)) return
     state.today.background[slot] = sum(state.today.background[slot], d)
     state.today.calls += 1
+    countChannel(tag)
     dirty = true
     cached = null // 下次取的时候重新算
     save()
+  }
+
+  function countChannel(tag) {
+    const k = String(tag || 'other').slice(0, 24)
+    if (!state.today.byChannel) state.today.byChannel = {}
+    state.today.byChannel[k] = (Number(state.today.byChannel[k]) || 0) + 1
+  }
+
+  /** 记一笔「这个渠道开了一轮」——系统回合（刷 B 站 / 小红书 / 写日记）不走 bump，由宿主调用。 */
+  function spend(tag = 'other') {
+    rollDay()
+    countChannel(tag)
+    state.today.calls += 1
+    save()
+    cached = null
   }
 
   /** 单价（元 / 百万 token）：高峰、空闲各一套；都没填就算不了钱。空闲没填时按高峰价兜底。 */
@@ -382,6 +399,7 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
       now: isPeak(now, holidays, workdays) ? 'peak' : 'idle',
       nowUntil: labelAt(now, boundaryAt(now, holidays, workdays)),
       calls: num(state.today.calls),
+      channels: channelTotals(),
       sessions: seenChats,
       cacheHit: hitRate(total),
       priced: Boolean(p),
@@ -408,5 +426,15 @@ export function createUsage({ dsh, log, getConfig, sessions }) {
     return Number(state.today && state.today.calls) || 0
   }
 
-  return { sample, summary, bump, chatTotals, todayCalls, save: () => save(true), dayKey }
+  /** 某个渠道今天用了几次；不传就是总数。 */
+  function channelCalls(tag = '') {
+    if (!tag) return todayCalls()
+    return Number(state.today && state.today.byChannel && state.today.byChannel[tag]) || 0
+  }
+
+  function channelTotals() {
+    return { ...((state.today && state.today.byChannel) || {}) }
+  }
+
+  return { sample, summary, bump, spend, chatTotals, todayCalls, channelCalls, channelTotals, save: () => save(true), dayKey }
 }
